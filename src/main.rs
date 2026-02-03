@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use colored::Colorize;
 use std::io;
 
@@ -28,6 +28,7 @@ fn print_banner() {
 }
 
 /// Print a styled header for a section
+#[allow(dead_code)]
 fn print_header(title: &str) {
     let width = 50;
     let padding = (width - title.len() - 4) / 2;
@@ -322,7 +323,10 @@ async fn run_interactive() -> Result<()> {
         s if s.contains("Manage buckets") => commands::bucket::run().await?,
         s if s.contains("Configure") => commands::config::run().await?,
         s if s.contains("Exit") => {
-            println!("{}", "👋 Thanks for using Media Study! Happy learning!".cyan());
+            println!(
+                "{}",
+                "👋 Thanks for using Media Study! Happy learning!".cyan()
+            );
         }
         _ => unreachable!(),
     }

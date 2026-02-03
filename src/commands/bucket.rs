@@ -86,10 +86,7 @@ pub async fn list() -> Result<()> {
 
     if buckets.is_empty() {
         println!("{}", "No buckets found.".dimmed());
-        println!(
-            "Create one with {}",
-            "media-study bucket create".cyan()
-        );
+        println!("Create one with {}", "media-study bucket create".cyan());
         return Ok(());
     }
 
@@ -97,7 +94,11 @@ pub async fn list() -> Result<()> {
 
     for name in &buckets {
         let is_current = current_name == Some(name.as_str());
-        let marker = if is_current { "→ ".green() } else { "  ".normal() };
+        let marker = if is_current {
+            "→ ".green()
+        } else {
+            "  ".normal()
+        };
         let suffix = if is_current {
             " (current)".green().to_string()
         } else {
@@ -110,13 +111,7 @@ pub async fn list() -> Result<()> {
         let store = DocumentStore::new(&db);
         let count = store.count()?;
 
-        println!(
-            "{}{}{}  ({} documents)",
-            marker,
-            name.bold(),
-            suffix,
-            count
-        );
+        println!("{}{}{}  ({} documents)", marker, name.bold(), suffix, count);
     }
 
     Ok(())

@@ -5,7 +5,7 @@ use inquire::{Select, Text};
 use std::path::Path;
 
 use crate::embeddings;
-use crate::ingest::{self, chunk_text, ChunkConfig, ContentType};
+use crate::ingest::{self, ChunkConfig, ContentType, chunk_text};
 use crate::storage::{ChunkStore, Database, DocumentStore};
 
 pub async fn run(path: Option<String>) -> Result<()> {
@@ -51,7 +51,10 @@ fn prompt_for_source() -> Result<String> {
 
     let (prompt_text, help_text) = match source_type {
         "File" => ("Enter file path:", "You can use tab for path completion"),
-        "Directory" => ("Enter directory path:", "You can use tab for path completion"),
+        "Directory" => (
+            "Enter directory path:",
+            "You can use tab for path completion",
+        ),
         "URL/Website" => ("Enter URL:", "https://example.com/article"),
         "YouTube Video" => ("Enter YouTube URL:", "https://youtube.com/watch?v=..."),
         _ => unreachable!(),
@@ -160,10 +163,7 @@ async fn process_file(
     // Generate embeddings and store chunks
     for chunk in &chunks {
         // Generate embedding
-        let embedding = match embeddings::embed_text(&chunk.text) {
-            Ok(emb) => Some(emb),
-            Err(_) => None, // Continue without embedding if it fails
-        };
+        let embedding = embeddings::embed_text(&chunk.text).ok();
 
         chunk_store.insert(
             doc_id,
@@ -234,6 +234,7 @@ async fn process_directory(
     let mut errors = 0;
     let mut skipped = 0;
     let mut total_chunks = 0;
+    #[allow(clippy::type_complexity)]
     let mut results: Vec<(String, Result<(usize, usize), String>)> = Vec::new();
 
     for file_path in files {
@@ -354,11 +355,7 @@ async fn process_url(url: &str) -> Result<()> {
 
     // Check if already exists
     if doc_store.exists_by_path(url)? {
-        println!(
-            "{} URL already exists in database: {}",
-            "⚠".yellow(),
-            url
-        );
+        println!("{} URL already exists in database: {}", "⚠".yellow(), url);
         return Ok(());
     }
 
@@ -377,13 +374,7 @@ async fn process_url(url: &str) -> Result<()> {
 
     // Insert document
     let content_type = if is_youtube { "youtube" } else { "url" };
-    let doc_id = doc_store.insert(
-        url,
-        &content.title,
-        content_type,
-        &content.text,
-        None,
-    )?;
+    let doc_id = doc_store.insert(url, &content.title, content_type, &content.text, None)?;
 
     // Chunk and embed
     let config = ChunkConfig::default();

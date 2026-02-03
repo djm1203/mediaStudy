@@ -55,20 +55,24 @@ impl<'a> ChunkStore<'a> {
     ) -> Result<i64> {
         let embedding_bytes = embedding.map(embeddings::embedding_to_bytes);
 
-        self.db.conn.execute(
-            "INSERT INTO chunks (document_id, chunk_index, content, embedding)
+        self.db
+            .conn
+            .execute(
+                "INSERT INTO chunks (document_id, chunk_index, content, embedding)
              VALUES (?1, ?2, ?3, ?4)",
-            params![document_id, chunk_index, content, embedding_bytes],
-        ).context("Failed to insert chunk")?;
+                params![document_id, chunk_index, content, embedding_bytes],
+            )
+            .context("Failed to insert chunk")?;
 
         Ok(self.db.conn.last_insert_rowid())
     }
 
     /// Get all chunks for a document
+    #[allow(dead_code)]
     pub fn get_for_document(&self, document_id: i64) -> Result<Vec<StoredChunk>> {
         let mut stmt = self.db.conn.prepare(
             "SELECT id, document_id, chunk_index, content, embedding
-             FROM chunks WHERE document_id = ?1 ORDER BY chunk_index"
+             FROM chunks WHERE document_id = ?1 ORDER BY chunk_index",
         )?;
 
         let rows = stmt.query_map(params![document_id], |row| {
@@ -96,7 +100,7 @@ impl<'a> ChunkStore<'a> {
     pub fn get_all_with_embeddings(&self) -> Result<Vec<StoredChunk>> {
         let mut stmt = self.db.conn.prepare(
             "SELECT id, document_id, chunk_index, content, embedding
-             FROM chunks WHERE embedding IS NOT NULL"
+             FROM chunks WHERE embedding IS NOT NULL",
         )?;
 
         let rows = stmt.query_map([], |row| {
@@ -121,6 +125,7 @@ impl<'a> ChunkStore<'a> {
     }
 
     /// Delete chunks for a document
+    #[allow(dead_code)]
     pub fn delete_for_document(&self, document_id: i64) -> Result<usize> {
         let affected = self.db.conn.execute(
             "DELETE FROM chunks WHERE document_id = ?1",
@@ -131,6 +136,7 @@ impl<'a> ChunkStore<'a> {
     }
 
     /// Count chunks for a document
+    #[allow(dead_code)]
     pub fn count_for_document(&self, document_id: i64) -> Result<i64> {
         let count: i64 = self.db.conn.query_row(
             "SELECT COUNT(*) FROM chunks WHERE document_id = ?1",
@@ -143,20 +149,20 @@ impl<'a> ChunkStore<'a> {
 
     /// Count total chunks
     pub fn count(&self) -> Result<i64> {
-        let count: i64 = self.db.conn.query_row(
-            "SELECT COUNT(*) FROM chunks",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .db
+            .conn
+            .query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
 
         Ok(count)
     }
 
     /// Get chunks with embeddings that haven't been embedded yet
+    #[allow(dead_code)]
     pub fn get_unembedded(&self) -> Result<Vec<StoredChunk>> {
         let mut stmt = self.db.conn.prepare(
             "SELECT id, document_id, chunk_index, content, embedding
-             FROM chunks WHERE embedding IS NULL"
+             FROM chunks WHERE embedding IS NULL",
         )?;
 
         let rows = stmt.query_map([], |row| {
@@ -178,6 +184,7 @@ impl<'a> ChunkStore<'a> {
     }
 
     /// Update chunk embedding
+    #[allow(dead_code)]
     pub fn update_embedding(&self, chunk_id: i64, embedding: &[f32]) -> Result<()> {
         let embedding_bytes = embeddings::embedding_to_bytes(embedding);
 

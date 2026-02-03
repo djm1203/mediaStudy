@@ -19,5 +19,11 @@ config.toml
 # Data directory (user content)
 /data/
 
-# Local docs and planning
-/docs/
+# Embedding model cache (downloaded at runtime, ~90MB)
+.fastembed_cache/
+
+# SQLite databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

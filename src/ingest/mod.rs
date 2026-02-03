@@ -4,7 +4,7 @@ pub mod pdf;
 pub mod text;
 pub mod url;
 
-pub use chunker::{chunk_text, Chunk, ChunkConfig};
+pub use chunker::{ChunkConfig, chunk_text};
 pub use url::fetch_url;
 
 use anyhow::Result;
@@ -22,19 +22,27 @@ pub enum ContentType {
     Audio,
     Video,
     Image,
+    #[allow(dead_code)]
     Url,
     Unknown,
 }
 
 impl ContentType {
     pub fn from_path(path: &Path) -> Self {
-        match path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()).as_deref() {
+        match path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase())
+            .as_deref()
+        {
             Some("pdf") => ContentType::Pdf,
             Some("txt") => ContentType::Text,
             Some("md" | "markdown") => ContentType::Markdown,
             Some("mp3" | "wav" | "m4a" | "ogg" | "flac") => ContentType::Audio,
             Some("mp4" | "mkv" | "avi" | "mov" | "webm" | "flv") => ContentType::Video,
-            Some("png" | "jpg" | "jpeg" | "gif" | "bmp" | "tiff" | "tif" | "webp") => ContentType::Image,
+            Some("png" | "jpg" | "jpeg" | "gif" | "bmp" | "tiff" | "tif" | "webp") => {
+                ContentType::Image
+            }
             _ => ContentType::Unknown,
         }
     }
@@ -43,6 +51,7 @@ impl ContentType {
         matches!(self, ContentType::Audio | ContentType::Video)
     }
 
+    #[allow(dead_code)]
     pub fn is_image(&self) -> bool {
         matches!(self, ContentType::Image)
     }
@@ -51,12 +60,14 @@ impl ContentType {
 /// Extracted content from a file
 #[derive(Debug, Clone)]
 pub struct ExtractedContent {
+    #[allow(dead_code)]
     pub source: String,
     pub content_type: ContentType,
     pub text: String,
 }
 
 /// Extract text content from a file based on its type (sync, for text-based files)
+#[allow(dead_code)]
 pub fn extract_from_file(path: &Path) -> Result<ExtractedContent> {
     let content_type = ContentType::from_path(path);
 
@@ -140,6 +151,7 @@ pub fn requires_transcription(path: &Path) -> bool {
 }
 
 /// Check if a file requires async processing (transcription or OCR)
+#[allow(dead_code)]
 pub fn requires_async_processing(path: &Path) -> bool {
     let ct = ContentType::from_path(path);
     ct.is_media() || ct.is_image()

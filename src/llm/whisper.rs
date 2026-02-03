@@ -19,8 +19,12 @@ struct TranscriptionResponse {
 
 impl WhisperClient {
     /// Available Whisper models on Groq
+    #[allow(dead_code)]
     pub const MODELS: &'static [(&'static str, &'static str)] = &[
-        ("whisper-large-v3-turbo", "Whisper Large v3 Turbo - Fast and accurate"),
+        (
+            "whisper-large-v3-turbo",
+            "Whisper Large v3 Turbo - Fast and accurate",
+        ),
         ("whisper-large-v3", "Whisper Large v3 - Most accurate"),
     ];
 
@@ -140,7 +144,8 @@ pub async fn extract_audio_from_video(video_path: &Path) -> Result<std::path::Pa
 
     // Get canonical path for safety
     let canonical_input = std::fs::canonicalize(video_path)?;
-    let input_str = canonical_input.to_str()
+    let input_str = canonical_input
+        .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in video path"))?;
 
     // Generate unique output filename
@@ -149,11 +154,10 @@ pub async fn extract_audio_from_video(video_path: &Path) -> Result<std::path::Pa
         .unwrap_or(std::time::Duration::from_secs(0))
         .as_secs();
     let pid = std::process::id();
-    let output_path = std::env::temp_dir().join(format!(
-        "media-study-audio-{}-{}.mp3",
-        pid, timestamp
-    ));
-    let output_str = output_path.to_str()
+    let output_path =
+        std::env::temp_dir().join(format!("media-study-audio-{}-{}.mp3", pid, timestamp));
+    let output_str = output_path
+        .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in output path"))?;
 
     // Use tokio::process for async execution
@@ -161,14 +165,14 @@ pub async fn extract_audio_from_video(video_path: &Path) -> Result<std::path::Pa
         .args([
             "-i",
             input_str,
-            "-vn",                // No video
+            "-vn", // No video
             "-acodec",
-            "libmp3lame",         // MP3 codec
+            "libmp3lame", // MP3 codec
             "-ar",
-            "16000",              // 16kHz sample rate (good for speech)
+            "16000", // 16kHz sample rate (good for speech)
             "-ac",
-            "1",                  // Mono
-            "-y",                 // Overwrite
+            "1",  // Mono
+            "-y", // Overwrite
             output_str,
         ])
         .stdout(std::process::Stdio::null())
@@ -185,6 +189,7 @@ pub async fn extract_audio_from_video(video_path: &Path) -> Result<std::path::Pa
 }
 
 /// Check if a file is an audio file
+#[allow(dead_code)]
 pub fn is_audio_file(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
@@ -193,6 +198,7 @@ pub fn is_audio_file(path: &Path) -> bool {
 }
 
 /// Check if a file is a video file
+#[allow(dead_code)]
 pub fn is_video_file(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),

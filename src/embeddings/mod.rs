@@ -18,13 +18,17 @@ fn get_model() -> Result<&'static Mutex<TextEmbedding>> {
     // Try to set it (another thread might have beat us)
     let _ = EMBEDDING_MODEL.set(Mutex::new(model));
 
-    EMBEDDING_MODEL.get().context("Failed to get embedding model")
+    EMBEDDING_MODEL
+        .get()
+        .context("Failed to get embedding model")
 }
 
 /// Generate embeddings for a list of texts
 pub fn embed_texts(texts: &[&str]) -> Result<Vec<Vec<f32>>> {
     let model = get_model()?;
-    let model = model.lock().map_err(|_| anyhow::anyhow!("Failed to lock embedding model"))?;
+    let model = model
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Failed to lock embedding model"))?;
 
     let embeddings = model
         .embed(texts.to_vec(), None)
@@ -79,10 +83,7 @@ pub fn find_similar(
 
 /// Serialize embedding to bytes for storage
 pub fn embedding_to_bytes(embedding: &[f32]) -> Vec<u8> {
-    embedding
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect()
+    embedding.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
 /// Deserialize embedding from bytes

@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use anyhow::{Context, Result};
 use scraper::{Html, Selector};
 use std::net::IpAddr;
@@ -6,6 +8,7 @@ use url::Url;
 /// Extracted content from a URL
 #[derive(Debug, Clone)]
 pub struct UrlContent {
+    #[allow(dead_code)]
     pub url: String,
     pub title: String,
     pub text: String,
@@ -16,11 +19,16 @@ fn validate_url(url: &Url) -> Result<()> {
     // Only allow http/https schemes
     match url.scheme() {
         "http" | "https" => {}
-        scheme => anyhow::bail!("Unsupported URL scheme: {}. Only http and https are allowed.", scheme),
+        scheme => anyhow::bail!(
+            "Unsupported URL scheme: {}. Only http and https are allowed.",
+            scheme
+        ),
     }
 
     // Check host
-    let host = url.host_str().ok_or_else(|| anyhow::anyhow!("URL has no host"))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("URL has no host"))?;
 
     // Block cloud metadata endpoints
     if host == "169.254.169.254" || host == "metadata.google.internal" {
@@ -53,9 +61,7 @@ fn is_private_ip(ip: &IpAddr) -> bool {
                 || ipv4.is_broadcast()
                 || ipv4.is_unspecified()
         }
-        IpAddr::V6(ipv6) => {
-            ipv6.is_loopback() || ipv6.is_unspecified()
-        }
+        IpAddr::V6(ipv6) => ipv6.is_loopback() || ipv6.is_unspecified(),
     }
 }
 
@@ -159,7 +165,11 @@ fn extract_article(html: &str, url: &str) -> Result<UrlContent> {
         anyhow::bail!("Could not extract content from URL");
     }
 
-    Ok(UrlContent { url: url.to_string(), title, text })
+    Ok(UrlContent {
+        url: url.to_string(),
+        title,
+        text,
+    })
 }
 
 /// Extract title from document
@@ -206,7 +216,9 @@ fn extract_text_from_element(element: &scraper::ElementRef) -> String {
     let mut text = String::new();
 
     // Tags to skip entirely
-    let skip_tags = ["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe"];
+    let skip_tags = [
+        "script", "style", "nav", "header", "footer", "aside", "noscript", "iframe",
+    ];
 
     for node in element.descendants() {
         match node.value() {
@@ -236,7 +248,10 @@ fn extract_text_from_element(element: &scraper::ElementRef) -> String {
             }
             scraper::Node::Element(elem) => {
                 // Add newlines for block elements
-                if matches!(elem.name(), "p" | "br" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "li" | "tr") {
+                if matches!(
+                    elem.name(),
+                    "p" | "br" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "li" | "tr"
+                ) {
                     if !text.is_empty() && !text.ends_with('\n') {
                         text.push('\n');
                     }
@@ -315,7 +330,9 @@ async fn fetch_youtube_transcript(url: &str) -> Result<UrlContent> {
         .context("yt-dlp not found. Install it with: pip install yt-dlp")?;
 
     let title = if info_output.status.success() {
-        String::from_utf8_lossy(&info_output.stdout).trim().to_string()
+        String::from_utf8_lossy(&info_output.stdout)
+            .trim()
+            .to_string()
     } else {
         "YouTube Video".to_string()
     };
@@ -324,10 +341,13 @@ async fn fetch_youtube_transcript(url: &str) -> Result<UrlContent> {
     let output = Command::new("yt-dlp")
         .args([
             "--write-auto-sub",
-            "--sub-lang", "en",
+            "--sub-lang",
+            "en",
             "--skip-download",
-            "--sub-format", "vtt",
-            "-o", &temp_pattern,
+            "--sub-format",
+            "vtt",
+            "-o",
+            &temp_pattern,
             url,
         ])
         .output()
@@ -339,10 +359,13 @@ async fn fetch_youtube_transcript(url: &str) -> Result<UrlContent> {
         let output = Command::new("yt-dlp")
             .args([
                 "--write-sub",
-                "--sub-lang", "en",
+                "--sub-lang",
+                "en",
                 "--skip-download",
-                "--sub-format", "vtt",
-                "-o", &temp_pattern,
+                "--sub-format",
+                "vtt",
+                "-o",
+                &temp_pattern,
                 url,
             ])
             .output()
@@ -360,7 +383,9 @@ async fn fetch_youtube_transcript(url: &str) -> Result<UrlContent> {
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if name.starts_with(&temp_prefix) && (name.ends_with(".vtt") || name.ends_with(".en.vtt")) {
+            if name.starts_with(&temp_prefix)
+                && (name.ends_with(".vtt") || name.ends_with(".en.vtt"))
+            {
                 transcript_file = Some(path);
                 break;
             }
@@ -401,7 +426,9 @@ fn parse_vtt(vtt: &str) -> String {
             || line.starts_with("Kind:")
             || line.starts_with("Language:")
             || line.contains("-->")
-            || line.chars().all(|c| c.is_ascii_digit() || c == ':' || c == '.' || c == ' ')
+            || line
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == ':' || c == '.' || c == ' ')
         {
             continue;
         }
@@ -457,8 +484,12 @@ mod tests {
 
     #[test]
     fn test_is_youtube_url() {
-        assert!(is_youtube_url(&Url::parse("https://www.youtube.com/watch?v=abc123").unwrap()));
-        assert!(is_youtube_url(&Url::parse("https://youtu.be/abc123").unwrap()));
+        assert!(is_youtube_url(
+            &Url::parse("https://www.youtube.com/watch?v=abc123").unwrap()
+        ));
+        assert!(is_youtube_url(
+            &Url::parse("https://youtu.be/abc123").unwrap()
+        ));
         assert!(!is_youtube_url(&Url::parse("https://example.com").unwrap()));
     }
 }

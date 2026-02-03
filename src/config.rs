@@ -39,8 +39,8 @@ impl Config {
         if path.exists() {
             let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read config from {:?}", path))?;
-            let config: Config = toml::from_str(&content)
-                .with_context(|| "Failed to parse config file")?;
+            let config: Config =
+                toml::from_str(&content).with_context(|| "Failed to parse config file")?;
             Ok(config)
         } else {
             Ok(Config::default())
@@ -50,14 +50,14 @@ impl Config {
     /// Save config to file with secure permissions (600)
     pub fn save(&self) -> Result<()> {
         let path = Self::config_path()?;
-        let dir = path.parent()
+        let dir = path
+            .parent()
             .ok_or_else(|| anyhow::anyhow!("Config path has no parent directory"))?;
 
         std::fs::create_dir_all(dir)
             .with_context(|| format!("Failed to create config directory {:?}", dir))?;
 
-        let content = toml::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
 
         std::fs::write(&path, &content)
             .with_context(|| format!("Failed to write config to {:?}", path))?;
@@ -83,7 +83,8 @@ impl Config {
 
     /// Get the Groq API key, checking environment variable as fallback
     pub fn get_api_key(&self) -> Option<String> {
-        self.groq_api_key.clone()
+        self.groq_api_key
+            .clone()
             .filter(|k| !k.is_empty())
             .or_else(|| std::env::var("GROQ_API_KEY").ok())
     }

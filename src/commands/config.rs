@@ -19,7 +19,8 @@ pub async fn run() -> Result<()> {
     ];
 
     loop {
-        let selection = Select::new("What would you like to configure?", options.clone()).prompt()?;
+        let selection =
+            Select::new("What would you like to configure?", options.clone()).prompt()?;
 
         match selection {
             "Set Groq API key" => {

@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use anyhow::{Context, Result};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -48,6 +50,7 @@ struct StreamChunk {
 #[derive(Debug, Deserialize)]
 struct StreamChoice {
     delta: Delta,
+    #[allow(dead_code)]
     finish_reason: Option<String>,
 }
 
@@ -60,7 +63,10 @@ impl GroqClient {
     /// Available models on Groq
     pub const MODELS: &'static [(&'static str, &'static str)] = &[
         ("openai/gpt-oss-120b", "GPT-OSS 120B - Most powerful"),
-        ("llama-3.3-70b-versatile", "Llama 3.3 70B - Best for complex tasks"),
+        (
+            "llama-3.3-70b-versatile",
+            "Llama 3.3 70B - Best for complex tasks",
+        ),
         ("llama-3.1-8b-instant", "Llama 3.1 8B - Fast and efficient"),
         ("mixtral-8x7b-32768", "Mixtral 8x7B - Good balance"),
         ("gemma2-9b-it", "Gemma 2 9B - Google's model"),

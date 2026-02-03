@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use anyhow::Result;
 use colored::Colorize;
 use inquire::{Select, Text};
@@ -88,9 +90,18 @@ If the problem requires knowledge not in the materials, note what additional con
 }
 
 pub async fn run() -> Result<()> {
-    println!("\n{}", "╔══════════════════════════════════════════════════╗".magenta());
-    println!("{}", "║         📝  STUDY MATERIAL GENERATOR             ║".magenta());
-    println!("{}", "╚══════════════════════════════════════════════════╝".magenta());
+    println!(
+        "\n{}",
+        "╔══════════════════════════════════════════════════╗".magenta()
+    );
+    println!(
+        "{}",
+        "║         📝  STUDY MATERIAL GENERATOR             ║".magenta()
+    );
+    println!(
+        "{}",
+        "╚══════════════════════════════════════════════════╝".magenta()
+    );
     println!();
 
     let options = vec![
@@ -198,12 +209,10 @@ pub async fn homework_help() -> Result<()> {
     println!("Type your homework question or problem.");
     println!("Type {} to exit.\n", "done".dimmed());
 
-    let mut conversation = vec![
-        crate::llm::groq::Message {
-            role: "system".to_string(),
-            content: prompts::HOMEWORK_HELP.to_string(),
-        },
-    ];
+    let mut conversation = vec![crate::llm::groq::Message {
+        role: "system".to_string(),
+        content: prompts::HOMEWORK_HELP.to_string(),
+    }];
 
     loop {
         let input = Text::new("Problem:")
@@ -293,11 +302,7 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
         .unwrap_or_else(|| "(default)".to_string());
 
     println!("\n{} {}", "Bucket:".dimmed(), bucket_name.cyan());
-    println!(
-        "{} {}",
-        "Generating:".dimmed(),
-        name.yellow()
-    );
+    println!("{} {}", "Generating:".dimmed(), name.yellow());
     if !topic.is_empty() {
         println!("{} {}", "Focus:".dimmed(), topic);
     }
@@ -466,12 +471,11 @@ fn build_semantic_context(
         }
 
         let doc = doc_store.get(chunk.document_id)?;
-        let filename = doc.map(|d| d.filename).unwrap_or_else(|| "Unknown".to_string());
+        let filename = doc
+            .map(|d| d.filename)
+            .unwrap_or_else(|| "Unknown".to_string());
 
-        context.push_str(&format!(
-            "--- {} ---\n{}\n\n",
-            filename, chunk.content
-        ));
+        context.push_str(&format!("--- {} ---\n{}\n\n", filename, chunk.content));
 
         total_chars += chunk.content.len() + filename.len() + 20;
     }

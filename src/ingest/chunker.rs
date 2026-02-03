@@ -1,11 +1,14 @@
-/// Text chunking strategies for RAG
+//! Text chunking strategies for RAG
+#![allow(clippy::collapsible_if)]
 
 /// A chunk of text with metadata
 #[derive(Debug, Clone)]
 pub struct Chunk {
     pub text: String,
     pub index: usize,
+    #[allow(dead_code)]
     pub start_char: usize,
+    #[allow(dead_code)]
     pub end_char: usize,
 }
 
@@ -21,8 +24,8 @@ pub struct ChunkConfig {
 impl Default for ChunkConfig {
     fn default() -> Self {
         Self {
-            chunk_size: 1000,  // ~250 tokens
-            overlap: 200,      // Some overlap for context continuity
+            chunk_size: 1000, // ~250 tokens
+            overlap: 200,     // Some overlap for context continuity
         }
     }
 }

@@ -5,7 +5,7 @@ use inquire::Text;
 use crate::bucket;
 use crate::config::Config;
 use crate::embeddings;
-use crate::llm::{groq::Message, GroqClient};
+use crate::llm::{GroqClient, groq::Message};
 use crate::storage::{ChunkStore, Database, DocumentStore};
 
 const GROUNDED_SYSTEM_PROMPT: &str = r#"You are a study assistant helping a student learn from their course materials.
@@ -58,18 +58,41 @@ pub async fn run() -> Result<()> {
         .map(|b| b.name)
         .unwrap_or_else(|| "(default)".to_string());
 
-    println!("\n{}", "╔══════════════════════════════════════════════════╗".cyan());
-    println!("{}", "║            💬  INTERACTIVE CHAT                  ║".cyan());
-    println!("{}", "╚══════════════════════════════════════════════════╝".cyan());
+    println!(
+        "\n{}",
+        "╔══════════════════════════════════════════════════╗".cyan()
+    );
+    println!(
+        "{}",
+        "║            💬  INTERACTIVE CHAT                  ║".cyan()
+    );
+    println!(
+        "{}",
+        "╚══════════════════════════════════════════════════╝".cyan()
+    );
     println!();
     println!("  {} {}", "📚 Bucket:".dimmed(), bucket_name.cyan().bold());
-    println!("  {} {}", "📄 Documents:".dimmed(), doc_count.to_string().yellow());
-    println!("  {} {}", "🧩 Chunks:".dimmed(), chunk_count.to_string().white());
+    println!(
+        "  {} {}",
+        "📄 Documents:".dimmed(),
+        doc_count.to_string().yellow()
+    );
+    println!(
+        "  {} {}",
+        "🧩 Chunks:".dimmed(),
+        chunk_count.to_string().white()
+    );
     println!("  {} {}", "🤖 Model:".dimmed(), client.model.green());
     println!();
-    println!("{}", "──────────────────────────────────────────────────".dimmed());
+    println!(
+        "{}",
+        "──────────────────────────────────────────────────".dimmed()
+    );
     println!("  Type {} to exit", "quit".yellow().bold());
-    println!("{}\n", "──────────────────────────────────────────────────".dimmed());
+    println!(
+        "{}\n",
+        "──────────────────────────────────────────────────".dimmed()
+    );
 
     if doc_count == 0 {
         println!(
@@ -224,7 +247,9 @@ fn build_semantic_context(
 
         // Get document filename
         let doc = doc_store.get(chunk.document_id)?;
-        let filename = doc.map(|d| d.filename).unwrap_or_else(|| "Unknown".to_string());
+        let filename = doc
+            .map(|d| d.filename)
+            .unwrap_or_else(|| "Unknown".to_string());
 
         let remaining = MAX_CONTEXT_CHARS - total_chars;
         let content = truncate_content(&chunk.content, remaining.min(1500));

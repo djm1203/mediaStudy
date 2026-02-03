@@ -7,6 +7,7 @@ use crate::config::Config;
 
 pub struct Database {
     pub conn: Connection,
+    #[allow(dead_code)]
     pub path: PathBuf,
 }
 
@@ -96,7 +97,7 @@ impl Database {
                 INSERT INTO documents_fts(rowid, filename, content, tags)
                 VALUES (new.id, new.filename, new.content, new.tags);
             END;
-            "
+            ",
         )?;
 
         // Conversations table

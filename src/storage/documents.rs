@@ -13,6 +13,7 @@ pub struct Document {
     pub content: String,
     pub tags: Option<String>,
     pub created_at: DateTime<Utc>,
+    #[allow(dead_code)]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -49,7 +50,7 @@ impl<'a> DocumentStore<'a> {
     pub fn get(&self, id: i64) -> Result<Option<Document>> {
         let mut stmt = self.db.conn.prepare(
             "SELECT id, source_path, filename, content_type, content, tags, created_at, updated_at
-             FROM documents WHERE id = ?1"
+             FROM documents WHERE id = ?1",
         )?;
 
         let mut rows = stmt.query(params![id])?;
@@ -65,7 +66,7 @@ impl<'a> DocumentStore<'a> {
     pub fn list(&self) -> Result<Vec<Document>> {
         let mut stmt = self.db.conn.prepare(
             "SELECT id, source_path, filename, content_type, content, tags, created_at, updated_at
-             FROM documents ORDER BY created_at DESC"
+             FROM documents ORDER BY created_at DESC",
         )?;
 
         let mut rows = stmt.query([])?;
@@ -100,21 +101,20 @@ impl<'a> DocumentStore<'a> {
 
     /// Delete a document by ID
     pub fn delete(&self, id: i64) -> Result<bool> {
-        let affected = self.db.conn.execute(
-            "DELETE FROM documents WHERE id = ?1",
-            params![id],
-        )?;
+        let affected = self
+            .db
+            .conn
+            .execute("DELETE FROM documents WHERE id = ?1", params![id])?;
 
         Ok(affected > 0)
     }
 
     /// Get document count
     pub fn count(&self) -> Result<i64> {
-        let count: i64 = self.db.conn.query_row(
-            "SELECT COUNT(*) FROM documents",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .db
+            .conn
+            .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))?;
 
         Ok(count)
     }

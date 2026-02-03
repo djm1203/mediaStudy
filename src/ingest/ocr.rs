@@ -3,9 +3,11 @@ use std::path::Path;
 use tokio::process::Command;
 
 /// Supported image formats for OCR
+#[allow(dead_code)]
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "webp"];
 
 /// Check if a file is an image that can be OCR'd
+#[allow(dead_code)]
 pub fn is_image_file(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -46,10 +48,7 @@ pub async fn extract_text(path: &Path) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in image path"))?;
 
     // Check if tesseract is available
-    let check = Command::new("tesseract")
-        .arg("--version")
-        .output()
-        .await;
+    let check = Command::new("tesseract").arg("--version").output().await;
 
     if check.is_err() {
         anyhow::bail!(

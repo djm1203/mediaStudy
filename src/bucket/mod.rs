@@ -57,10 +57,10 @@ impl Bucket {
             let entry = entry?;
             let path = entry.path();
 
-            if path.is_dir() {
-                if let Some(name) = path.file_name() {
-                    buckets.push(name.to_string_lossy().to_string());
-                }
+            if path.is_dir()
+                && let Some(name) = path.file_name()
+            {
+                buckets.push(name.to_string_lossy().to_string());
             }
         }
 
@@ -124,7 +124,7 @@ pub fn get_current_bucket() -> Result<Option<Bucket>> {
 /// Set the current active bucket
 pub fn set_current_bucket(name: Option<&str>) -> Result<()> {
     let mut config = Config::load()?;
-    config.current_bucket = name.map(|n| Bucket::sanitize_name(n));
+    config.current_bucket = name.map(Bucket::sanitize_name);
     config.save()?;
     Ok(())
 }

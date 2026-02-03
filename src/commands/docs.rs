@@ -44,18 +44,11 @@ pub async fn list() -> Result<()> {
 
     if documents.is_empty() {
         println!("{}", "No documents found.".dimmed());
-        println!(
-            "Use {} to add content.",
-            "media-study add".cyan()
-        );
+        println!("Use {} to add content.", "media-study add".cyan());
         return Ok(());
     }
 
-    println!(
-        "\n{} ({} documents)\n",
-        "Documents".bold(),
-        documents.len()
-    );
+    println!("\n{} ({} documents)\n", "Documents".bold(), documents.len());
 
     for doc in &documents {
         print_document_summary(doc);
@@ -111,7 +104,10 @@ async fn view_document() -> Result<()> {
         .with_help_message("Enter the document ID to view")
         .prompt()?;
 
-    let id: i64 = id_str.trim().parse().map_err(|_| anyhow::anyhow!("Invalid ID"))?;
+    let id: i64 = id_str
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid ID"))?;
 
     match store.get(id)? {
         Some(doc) => {
@@ -125,7 +121,11 @@ async fn view_document() -> Result<()> {
                 "Tags:".bold(),
                 doc.tags.as_deref().unwrap_or("none")
             );
-            println!("{} {}", "Created:".bold(), doc.created_at.format("%Y-%m-%d %H:%M"));
+            println!(
+                "{} {}",
+                "Created:".bold(),
+                doc.created_at.format("%Y-%m-%d %H:%M")
+            );
             println!("{} {} chars", "Length:".bold(), doc.content.len());
             println!("{}", "─".repeat(50).dimmed());
 
@@ -134,7 +134,10 @@ async fn view_document() -> Result<()> {
             println!("\n{}", "Content preview:".bold());
             println!("{}", &doc.content[..preview_len]);
             if doc.content.len() > 500 {
-                println!("{}", format!("... ({} more chars)", doc.content.len() - 500).dimmed());
+                println!(
+                    "{}",
+                    format!("... ({} more chars)", doc.content.len() - 500).dimmed()
+                );
             }
         }
         None => {
@@ -156,7 +159,10 @@ pub async fn delete(id: Option<i64>) -> Result<()> {
             let id_str = Text::new("Document ID to delete:")
                 .with_help_message("Enter the document ID to delete")
                 .prompt()?;
-            id_str.trim().parse().map_err(|_| anyhow::anyhow!("Invalid ID"))?
+            id_str
+                .trim()
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Invalid ID"))?
         }
     };
 
