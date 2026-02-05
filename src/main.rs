@@ -14,12 +14,15 @@ mod storage;
 
 /// ASCII art banner for the application
 const BANNER: &str = r#"
-  __  __          _ _       ____  _             _
- |  \/  | ___  __| (_) __ _/ ___|| |_ _   _  __| |_   _
- | |\/| |/ _ \/ _` | |/ _` \___ \| __| | | |/ _` | | | |
- | |  | |  __/ (_| | | (_| |___) | |_| |_| | (_| | |_| |
- |_|  |_|\___|\__,_|_|\__,_|____/ \__|\__,_|\__,_|\__, |
-                                                  |___/
+    ╔════════════════════════════════════════════════════════╗
+    ║                                                        ║
+    ║   ▀█▀ █ █ █▀▀   █   █ █▄▄ █▀█ ▄▀█ █▀█ █ ▄▀█ █▄ █     ║
+    ║    █  █▀█ ██▄   █▄▄ █ █▄█ █▀▄ █▀█ █▀▄ █ █▀█ █ ▀█     ║
+    ║                                                        ║
+    ║            ┌─────────────────────────────┐             ║
+    ║            │  📚 Your Study Companion 📚  │             ║
+    ║            └─────────────────────────────┘             ║
+    ╚════════════════════════════════════════════════════════╝
 "#;
 
 /// Print the application banner
@@ -46,19 +49,12 @@ fn print_header(title: &str) {
     println!("{}\n", line.cyan());
 }
 
-/// Print a styled status line
-fn print_status(label: &str, value: &str, icon: &str) {
-    println!(
-        "  {} {} {}",
-        icon,
-        format!("{}:", label).dimmed(),
-        value.cyan()
-    );
-}
-
 #[derive(Parser)]
-#[command(name = "media-study")]
-#[command(about = "CLI tool for ingesting media and studying with LLM assistance")]
+#[command(name = "librarian")]
+#[command(about = "The Librarian - Your personal AI study companion")]
+#[command(long_about = "The Librarian helps you study smarter by ingesting your course materials \
+(PDFs, videos, audio, notes) and letting you chat with them, generate study guides, \
+flashcards, quizzes, and more. Powered by Groq LLM and local embeddings.")]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -67,35 +63,36 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Add content (files, directories, URLs)
+    /// Add knowledge (files, directories, URLs, videos)
     Add {
         /// Path or URL to add (skips interactive prompt if provided)
         path: Option<String>,
     },
-    /// Start an interactive chat session
+    /// Ask the Librarian - chat with your materials
     Chat,
-    /// List all ingested documents
+    /// Browse your collection
     List,
-    /// Search documents by content
+    /// Search your materials
     Search {
         /// Search query
         query: Option<String>,
     },
-    /// Manage documents (view, delete)
+    /// Manage documents
     Docs,
-    /// Delete a document by ID
+    /// Remove a document from your collection
     Delete {
         /// Document ID to delete
         id: Option<i64>,
     },
-    /// Manage knowledge buckets (datasets per class/project)
+    /// Manage your library (organize by class/project)
+    #[command(alias = "library")]
     Bucket {
         #[command(subcommand)]
         action: Option<BucketAction>,
     },
-    /// Configure settings (API keys, preferences)
+    /// Configure The Librarian (API keys, model preferences)
     Config,
-    /// Generate study materials (guides, flashcards, quizzes)
+    /// Study tools - generate guides, flashcards, quizzes
     Generate {
         #[command(subcommand)]
         action: Option<GenerateAction>,
@@ -242,33 +239,59 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run_interactive() -> Result<()> {
-    use inquire::Select;
-
-    // Print the cool banner
-    print_banner();
-
-    // Show version and description
-    println!(
-        "  {} {}",
-        "Version:".dimmed(),
-        env!("CARGO_PKG_VERSION").cyan()
-    );
-    println!(
-        "  {} {}\n",
-        "Powered by:".dimmed(),
-        "Groq LLM + Local Embeddings".green()
-    );
-
-    // Show current status
-    println!("{}", "─".repeat(50).dimmed());
-
-    // Get bucket info
-    let bucket_name = bucket::get_current_bucket()
+/// Display the library shelf with buckets as books
+fn print_library_shelf() {
+    let buckets = bucket::Bucket::list_all().unwrap_or_default();
+    let current = bucket::get_current_bucket()
         .ok()
         .flatten()
-        .map(|b| b.name)
-        .unwrap_or_else(|| "(default)".to_string());
+        .map(|b| b.name);
+
+    if buckets.is_empty() {
+        println!("    {}", "┌─────────────────────────────────────────────┐".dimmed());
+        println!("    {}  {}  {}", "│".dimmed(), "Your library is empty. Add a bucket!".yellow(), "│".dimmed());
+        println!("    {}", "└─────────────────────────────────────────────┘".dimmed());
+        println!("    {}", "═══════════════════════════════════════════════".dimmed());
+        return;
+    }
+
+    // Draw shelf with books
+    println!("    {}", "┌─────────────────────────────────────────────┐".cyan());
+    println!("    {}       {}       {}", "│".cyan(), "📚 YOUR LIBRARY 📚".bold().white(), "│".cyan());
+    println!("    {}", "├─────────────────────────────────────────────┤".cyan());
+
+    // Draw books on shelf
+    let mut book_row = String::from("    │ ");
+    for bucket_name in &buckets {
+        let is_current = current.as_ref() == Some(bucket_name);
+        let book = if is_current {
+            format!(" 📖 {} ", bucket_name).on_cyan().black().to_string()
+        } else {
+            format!(" 📕 {} ", bucket_name).to_string()
+        };
+        book_row.push_str(&book);
+        book_row.push_str("  ");
+    }
+    // Pad to fit box
+    let display_len = book_row.chars().count();
+    if display_len < 50 {
+        book_row.push_str(&" ".repeat(50 - display_len));
+    }
+    book_row.push_str("│");
+    println!("{}", book_row.cyan());
+
+    println!("    {}", "└─────────────────────────────────────────────┘".cyan());
+    println!("    {}", "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀".yellow());
+}
+
+/// Print the status dashboard
+fn print_dashboard() {
+    // Get bucket info
+    let current_bucket = bucket::get_current_bucket().ok().flatten();
+    let bucket_name = current_bucket
+        .as_ref()
+        .map(|b| b.name.clone())
+        .unwrap_or_else(|| "(no bucket selected)".to_string());
 
     // Get document count
     let doc_count = storage::Database::open()
@@ -278,58 +301,142 @@ async fn run_interactive() -> Result<()> {
         })
         .unwrap_or(0);
 
-    print_status("Bucket", &bucket_name, "📚");
-    print_status("Documents", &doc_count.to_string(), "📄");
+    // Get chunk count
+    let chunk_count = storage::Database::open()
+        .and_then(|db| {
+            let store = storage::ChunkStore::new(&db);
+            store.count()
+        })
+        .unwrap_or(0);
 
     // Check API key status
     let has_api_key = config::Config::load()
         .map(|c| c.has_api_key())
         .unwrap_or(false);
 
-    let api_status = if has_api_key {
-        "Configured".green().to_string()
-    } else {
-        "Not set (run 'config')".red().to_string()
-    };
-    print_status("API Key", &api_status, "🔑");
+    println!();
+    println!("    {}", "╭──────────────────── STATUS ────────────────────╮".bright_black());
+    println!("    {}  {} {}",
+        "│".bright_black(),
+        "📖 Current Book:".bold(),
+        if current_bucket.is_some() { bucket_name.cyan().to_string() } else { bucket_name.dimmed().to_string() }
+    );
+    println!("    {}  {} {} documents, {} chunks",
+        "│".bright_black(),
+        "📄 Contents:".bold(),
+        doc_count.to_string().green(),
+        chunk_count.to_string().green()
+    );
+    println!("    {}  {} {}",
+        "│".bright_black(),
+        "🔑 API Key:".bold(),
+        if has_api_key { "Ready".green().to_string() } else { "Not configured".red().to_string() }
+    );
+    println!("    {}", "╰─────────────────────────────────────────────────╯".bright_black());
+    println!();
+}
 
-    println!("{}\n", "─".repeat(50).dimmed());
+async fn run_interactive() -> Result<()> {
+    use inquire::Select;
 
-    let options = vec![
-        "📥  Add content (files, URLs, videos)",
-        "💬  Chat with your materials",
-        "📝  Generate study materials",
-        "📋  List documents",
-        "🔍  Search documents",
-        "📂  Manage documents",
-        "🗂️   Manage buckets",
-        "⚙️   Configure settings",
-        "🚪  Exit",
-    ];
+    // Print the banner once at start
+    print_banner();
 
-    let selection = Select::new("What would you like to do?", options)
-        .with_help_message("Use arrow keys to navigate, Enter to select")
-        .prompt()?;
+    // Show version info
+    println!(
+        "    {} {} │ {} {}",
+        "Version".dimmed(),
+        env!("CARGO_PKG_VERSION").cyan(),
+        "Powered by".dimmed(),
+        "Groq + FastEmbed".green()
+    );
 
-    println!(); // Add spacing
+    // Main application loop
+    loop {
+        // Show library shelf
+        println!();
+        print_library_shelf();
 
-    match selection {
-        s if s.contains("Add content") => commands::add::run(None).await?,
-        s if s.contains("Chat with") => commands::chat::run().await?,
-        s if s.contains("Generate study") => commands::generate::run().await?,
-        s if s.contains("List documents") => commands::docs::list().await?,
-        s if s.contains("Search documents") => commands::docs::search(None).await?,
-        s if s.contains("Manage documents") => commands::docs::run().await?,
-        s if s.contains("Manage buckets") => commands::bucket::run().await?,
-        s if s.contains("Configure") => commands::config::run().await?,
-        s if s.contains("Exit") => {
-            println!(
-                "{}",
-                "👋 Thanks for using Media Study! Happy learning!".cyan()
-            );
+        // Show status dashboard
+        print_dashboard();
+
+        let options = vec![
+            "📥  Add Knowledge        │ Import files, URLs, videos",
+            "💬  Ask the Librarian    │ Chat with your materials",
+            "📝  Study Tools          │ Generate guides, flashcards, quizzes",
+            "───────────────────────────────────────────────",
+            "📋  Browse Collection    │ List all documents",
+            "🔍  Search               │ Find specific content",
+            "📂  Manage Documents     │ View, edit, delete",
+            "📚  Manage Library       │ Create, switch, delete buckets",
+            "───────────────────────────────────────────────",
+            "⚙️   Settings            │ API keys, preferences",
+            "🚪  Exit                 │ Close The Librarian",
+        ];
+
+        let selection = Select::new("What would you like to do?", options)
+            .with_help_message("↑↓ navigate • Enter select • Esc back")
+            .prompt();
+
+        // Handle Escape/Ctrl+C gracefully
+        let selection = match selection {
+            Ok(s) => s,
+            Err(inquire::InquireError::OperationCanceled) => {
+                print_farewell();
+                break;
+            }
+            Err(inquire::InquireError::OperationInterrupted) => {
+                print_farewell();
+                break;
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        // Skip separator lines
+        if selection.starts_with("───") {
+            continue;
         }
-        _ => unreachable!(),
+
+        println!(); // Add spacing
+
+        // Execute the selected action, catching errors gracefully
+        let result = match selection {
+            s if s.contains("Add Knowledge") => commands::add::run(None).await,
+            s if s.contains("Ask the Librarian") => commands::chat::run().await,
+            s if s.contains("Study Tools") => commands::generate::run().await,
+            s if s.contains("Browse Collection") => commands::docs::list().await,
+            s if s.contains("Search") => commands::docs::search(None).await,
+            s if s.contains("Manage Documents") => commands::docs::run().await,
+            s if s.contains("Manage Library") => commands::bucket::run().await,
+            s if s.contains("Settings") => commands::config::run().await,
+            s if s.contains("Exit") => {
+                print_farewell();
+                break;
+            }
+            _ => continue,
+        };
+
+        // Handle errors from commands gracefully - show error but continue
+        if let Err(e) = result {
+            let err_str = e.to_string();
+            if err_str.contains("cancelled") || err_str.contains("interrupted") {
+                println!("\n    {}", "← Returning to main menu...".dimmed());
+            } else {
+                eprintln!("\n    {} {}", "Error:".red(), e);
+            }
+        }
+
+        println!(); // Add spacing before next iteration
     }
 
     Ok(())
+}
+
+fn print_farewell() {
+    println!();
+    println!("    {}", "╭─────────────────────────────────────────╮".cyan());
+    println!("    {}   {}   {}", "│".cyan(), "📚 Thanks for visiting The Librarian! 📚".bold(), "│".cyan());
+    println!("    {}          {}          {}", "│".cyan(), "Happy studying! 🎓".green(), "│".cyan());
+    println!("    {}", "╰─────────────────────────────────────────╯".cyan());
+    println!();
 }

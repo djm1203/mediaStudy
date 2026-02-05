@@ -7,31 +7,88 @@ use crate::storage::{Database, DocumentStore};
 
 /// Interactive bucket management
 pub async fn run() -> Result<()> {
-    println!("{}", "Bucket Management".bold().cyan());
-    println!("{}", "─".repeat(40).dimmed());
+    println!();
+    println!(
+        "    {}",
+        "╭──────────────────────────────────────────────────────╮".yellow()
+    );
+    println!(
+        "    {}          {}          {}",
+        "│".yellow(),
+        "📚 LIBRARY MANAGEMENT 📚".bold().white(),
+        "│".yellow()
+    );
+    println!(
+        "    {}     {}     {}",
+        "│".yellow(),
+        "Organize your knowledge into separate books".dimmed(),
+        "│".yellow()
+    );
+    println!(
+        "    {}",
+        "╰──────────────────────────────────────────────────────╯".yellow()
+    );
+    println!();
 
     show_current_bucket();
 
     let options = vec![
-        "Create new bucket",
-        "Switch bucket",
-        "List buckets",
-        "Delete bucket",
-        "Use no bucket (default)",
-        "Back",
+        "📖  Create new book     │ Start a new study collection",
+        "🔄  Switch book         │ Change active collection",
+        "📋  List all books      │ See your library",
+        "🗑️   Delete book         │ Remove a collection",
+        "📭  Use no book         │ Switch to default storage",
+        "←   Back",
     ];
 
     loop {
-        let selection = Select::new("What would you like to do?", options.clone()).prompt()?;
+        let selection = Select::new("What would you like to do?", options.clone()).prompt();
+
+        let selection = match selection {
+            Ok(s) => s,
+            Err(inquire::InquireError::OperationCanceled)
+            | Err(inquire::InquireError::OperationInterrupted) => break,
+            Err(e) => return Err(e.into()),
+        };
 
         match selection {
-            "Create new bucket" => create_bucket().await?,
-            "Switch bucket" => switch_bucket().await?,
-            "List buckets" => list_buckets().await?,
-            "Delete bucket" => delete_bucket().await?,
-            "Use no bucket (default)" => clear_bucket().await?,
-            "Back" => break,
-            _ => unreachable!(),
+            s if s.contains("Create new book") => {
+                if let Err(e) = create_bucket().await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("Switch book") => {
+                if let Err(e) = switch_bucket().await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("List all books") => {
+                if let Err(e) = list_buckets().await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("Delete book") => {
+                if let Err(e) = delete_bucket().await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("Use no book") => {
+                if let Err(e) = clear_bucket().await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("Back") => break,
+            _ => {}
         }
 
         println!();

@@ -1,9 +1,13 @@
 [package]
-name = "media-study"
+name = "the-librarian"
 version = "0.1.0"
 edition = "2024"
-description = "CLI tool for ingesting media and studying with LLM assistance"
+description = "The Librarian - Your personal AI study companion. Ingest PDFs, videos, and notes, then chat, quiz, and generate study materials."
 license = "MIT"
+
+[[bin]]
+name = "librarian"
+path = "src/main.rs"
 
 [dependencies]
 # CLI and interactive prompts
@@ -24,6 +28,7 @@ serde_json = "1"
 
 # PDF parsing
 pdf-extract = "0.7"
+lopdf = "0.34"
 
 # Error handling
 anyhow = "1"

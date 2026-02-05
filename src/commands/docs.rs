@@ -6,27 +6,78 @@ use crate::storage::{Database, Document, DocumentStore};
 
 /// Interactive document management
 pub async fn run() -> Result<()> {
-    println!("{}", "Document Management".bold().cyan());
-    println!("{}", "─".repeat(40).dimmed());
+    println!();
+    println!(
+        "    {}",
+        "╭──────────────────────────────────────────────────────╮".green()
+    );
+    println!(
+        "    {}          {}          {}",
+        "│".green(),
+        "📂 DOCUMENT MANAGEMENT 📂".bold().white(),
+        "│".green()
+    );
+    println!(
+        "    {}       {}       {}",
+        "│".green(),
+        "Browse, search, and manage your materials".dimmed(),
+        "│".green()
+    );
+    println!(
+        "    {}",
+        "╰──────────────────────────────────────────────────────╯".green()
+    );
+    println!();
 
     let options = vec![
-        "List all documents",
-        "Search documents",
-        "View document",
-        "Delete document",
-        "Back",
+        "📋  List all documents  │ See everything in this book",
+        "🔍  Search documents    │ Find specific content",
+        "👁️   View document       │ Read document details",
+        "🗑️   Delete document     │ Remove from collection",
+        "←   Back",
     ];
 
     loop {
-        let selection = Select::new("What would you like to do?", options.clone()).prompt()?;
+        let selection = Select::new("What would you like to do?", options.clone()).prompt();
+
+        let selection = match selection {
+            Ok(s) => s,
+            Err(inquire::InquireError::OperationCanceled)
+            | Err(inquire::InquireError::OperationInterrupted) => break,
+            Err(e) => return Err(e.into()),
+        };
 
         match selection {
-            "List all documents" => list().await?,
-            "Search documents" => search(None).await?,
-            "View document" => view_document().await?,
-            "Delete document" => delete_document().await?,
-            "Back" => break,
-            _ => unreachable!(),
+            s if s.contains("List all documents") => {
+                if let Err(e) = list().await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("Search documents") => {
+                if let Err(e) = search(None).await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("View document") => {
+                if let Err(e) = view_document().await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("Delete document") => {
+                if let Err(e) = delete_document().await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
+            }
+            s if s.contains("Back") => break,
+            _ => {}
         }
 
         println!();

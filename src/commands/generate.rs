@@ -4,9 +4,12 @@ use anyhow::Result;
 use colored::Colorize;
 use inquire::{Select, Text};
 use std::io::Write;
+use std::path::PathBuf;
 
 use crate::bucket;
 use crate::config::Config;
+use crate::embeddings;
+use crate::ingest::{ChunkConfig, chunk_text};
 use crate::llm::GroqClient;
 use crate::storage::{ChunkStore, Database, DocumentStore};
 
@@ -90,39 +93,48 @@ If the problem requires knowledge not in the materials, note what additional con
 }
 
 pub async fn run() -> Result<()> {
+    println!();
     println!(
-        "\n{}",
-        "╔══════════════════════════════════════════════════╗".magenta()
+        "    {}",
+        "╭──────────────────────────────────────────────────────╮".magenta()
     );
     println!(
-        "{}",
-        "║         📝  STUDY MATERIAL GENERATOR             ║".magenta()
+        "    {}         {}         {}",
+        "│".magenta(),
+        "📝 THE LIBRARIAN'S STUDY TOOLS 📝".bold().white(),
+        "│".magenta()
     );
     println!(
-        "{}",
-        "╚══════════════════════════════════════════════════╝".magenta()
+        "    {}    {}    {}",
+        "│".magenta(),
+        "Generate guides, flashcards, quizzes & more!".dimmed(),
+        "│".magenta()
+    );
+    println!(
+        "    {}",
+        "╰──────────────────────────────────────────────────────╯".magenta()
     );
     println!();
 
     let options = vec![
-        "Study Guide",
-        "Flashcards",
-        "Quiz",
-        "Summary",
-        "Homework Help",
-        "Back",
+        "📚  Study Guide    │ Comprehensive topic overview",
+        "🃏  Flashcards     │ Q&A cards for memorization",
+        "📋  Practice Quiz  │ Test your knowledge",
+        "📝  Summary        │ Quick topic recap",
+        "✏️   Homework Help  │ Interactive problem solving",
+        "←   Back",
     ];
 
     let selection = Select::new("What would you like to generate?", options).prompt()?;
 
     match selection {
-        "Study Guide" => study_guide(None).await?,
-        "Flashcards" => flashcards(None).await?,
-        "Quiz" => quiz(None).await?,
-        "Summary" => summary(None).await?,
-        "Homework Help" => homework_help().await?,
-        "Back" => {}
-        _ => unreachable!(),
+        s if s.contains("Study Guide") => study_guide(None).await?,
+        s if s.contains("Flashcards") => flashcards(None).await?,
+        s if s.contains("Practice Quiz") => quiz(None).await?,
+        s if s.contains("Summary") => summary(None).await?,
+        s if s.contains("Homework Help") => homework_help().await?,
+        s if s.contains("Back") => {}
+        _ => {}
     }
 
     Ok(())
@@ -345,9 +357,17 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
             println!("{}", "─".repeat(50).dimmed());
 
             // Offer to save
-            let save = Select::new("Save to file?", vec!["No", "Yes"]).prompt()?;
+            let save_options = vec![
+                "📚  Save & add to library  │ Save file and make it searchable",
+                "💾  Save file only         │ Just save to disk",
+                "❌  Don't save             │ Discard output",
+            ];
+            let save = Select::new("What would you like to do?", save_options).prompt()?;
 
-            if save == "Yes" {
+            if save.contains("Don't save") {
+                println!("{}", "Output not saved.".dimmed());
+            } else {
+                // Generate default filename
                 let default_name = format!(
                     "{}-{}.md",
                     name.to_lowercase().replace(' ', "-"),
@@ -358,8 +378,23 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
                     .with_default(&default_name)
                     .prompt()?;
 
-                std::fs::write(&filename, &response)?;
-                println!("{} Saved to {}", "✓".green(), filename.cyan());
+                // Determine save path
+                let save_path = get_save_path(&filename)?;
+
+                // Ensure directory exists
+                if let Some(parent) = save_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+
+                // Save the file
+                std::fs::write(&save_path, &response)?;
+                println!("{} Saved to {}", "✓".green(), save_path.display().to_string().cyan());
+
+                // If user wants to add to library, ingest it
+                if save.contains("add to library") {
+                    ingest_generated_content(&save_path, &filename, name, &response)?;
+                    println!("{} Added to your library - now searchable!", "✓".green());
+                }
             }
         }
         Err(e) => {
@@ -481,4 +516,65 @@ fn build_semantic_context(
     }
 
     Ok(context)
+}
+
+/// Get the save path for generated content (inside bucket's generated/ folder)
+fn get_save_path(filename: &str) -> Result<PathBuf> {
+    let base_path = match bucket::get_current_bucket()? {
+        Some(bucket) => bucket.path.join("generated"),
+        None => {
+            // No bucket - save to default data dir
+            Config::data_dir()?.join("generated")
+        }
+    };
+
+    Ok(base_path.join(filename))
+}
+
+/// Ingest generated content into the library
+fn ingest_generated_content(
+    path: &PathBuf,
+    filename: &str,
+    content_type: &str,
+    content: &str,
+) -> Result<()> {
+    let db = Database::open()?;
+    let doc_store = DocumentStore::new(&db);
+    let chunk_store = ChunkStore::new(&db);
+
+    // Initialize chunks table if needed
+    chunk_store.init_schema()?;
+
+    // Check if already exists
+    let source_path = path.to_string_lossy().to_string();
+    if doc_store.exists_by_path(&source_path)? {
+        // Already exists, skip
+        return Ok(());
+    }
+
+    // Insert document with a special tag
+    let doc_type = format!("generated-{}", content_type.to_lowercase().replace(' ', "-"));
+    let doc_id = doc_store.insert(
+        &source_path,
+        filename,
+        &doc_type,
+        content,
+        Some("generated,study-material"),
+    )?;
+
+    // Chunk and embed
+    let config = ChunkConfig::default();
+    let chunks = chunk_text(content, &config);
+
+    for chunk in &chunks {
+        let embedding = embeddings::embed_text(&chunk.text).ok();
+        chunk_store.insert(
+            doc_id,
+            chunk.index as i64,
+            &chunk.text,
+            embedding.as_deref(),
+        )?;
+    }
+
+    Ok(())
 }

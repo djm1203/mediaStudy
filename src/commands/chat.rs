@@ -8,7 +8,7 @@ use crate::embeddings;
 use crate::llm::{GroqClient, groq::Message};
 use crate::storage::{ChunkStore, Database, DocumentStore};
 
-const GROUNDED_SYSTEM_PROMPT: &str = r#"You are a study assistant helping a student learn from their course materials.
+const GROUNDED_SYSTEM_PROMPT: &str = r#"You are The Librarian, a knowledgeable study assistant helping a student learn from their course materials.
 
 IMPORTANT INSTRUCTIONS:
 1. Answer questions using ONLY the provided context from their documents
@@ -19,7 +19,7 @@ IMPORTANT INSTRUCTIONS:
 
 Format citations like: [Source: filename]"#;
 
-const NO_DOCS_SYSTEM_PROMPT: &str = r#"You are a study assistant. The user has no documents loaded in their current bucket.
+const NO_DOCS_SYSTEM_PROMPT: &str = r#"You are The Librarian, a knowledgeable study assistant. The user has no documents loaded in their current library.
 
 Help them by:
 1. Answering general questions to the best of your ability
@@ -58,41 +58,56 @@ pub async fn run() -> Result<()> {
         .map(|b| b.name)
         .unwrap_or_else(|| "(default)".to_string());
 
-    println!(
-        "\n{}",
-        "╔══════════════════════════════════════════════════╗".cyan()
-    );
-    println!(
-        "{}",
-        "║            💬  INTERACTIVE CHAT                  ║".cyan()
-    );
-    println!(
-        "{}",
-        "╚══════════════════════════════════════════════════╝".cyan()
-    );
-    println!();
-    println!("  {} {}", "📚 Bucket:".dimmed(), bucket_name.cyan().bold());
-    println!(
-        "  {} {}",
-        "📄 Documents:".dimmed(),
-        doc_count.to_string().yellow()
-    );
-    println!(
-        "  {} {}",
-        "🧩 Chunks:".dimmed(),
-        chunk_count.to_string().white()
-    );
-    println!("  {} {}", "🤖 Model:".dimmed(), client.model.green());
     println!();
     println!(
-        "{}",
-        "──────────────────────────────────────────────────".dimmed()
+        "    {}",
+        "╭──────────────────────────────────────────────────────╮".cyan()
     );
-    println!("  Type {} to exit", "quit".yellow().bold());
     println!(
-        "{}\n",
-        "──────────────────────────────────────────────────".dimmed()
+        "    {}       {}       {}",
+        "│".cyan(),
+        "🎓 ASK THE LIBRARIAN 🎓".bold().white(),
+        "│".cyan()
     );
+    println!(
+        "    {}  {}  {}",
+        "│".cyan(),
+        "Your personal study assistant, ready to help!".dimmed(),
+        "│".cyan()
+    );
+    println!(
+        "    {}",
+        "├──────────────────────────────────────────────────────┤".cyan()
+    );
+    println!(
+        "    {}  📖 Book: {:<20} 📄 {} docs, {} chunks  {}",
+        "│".cyan(),
+        bucket_name.cyan(),
+        doc_count.to_string().green(),
+        chunk_count.to_string().green(),
+        "│".cyan()
+    );
+    println!(
+        "    {}  🤖 Model: {:<43} {}",
+        "│".cyan(),
+        client.model.yellow(),
+        "│".cyan()
+    );
+    println!(
+        "    {}",
+        "├──────────────────────────────────────────────────────┤".cyan()
+    );
+    println!(
+        "    {}  💡 {} to exit │ Ask anything about your materials!  {}",
+        "│".cyan(),
+        "quit".yellow().bold(),
+        "│".cyan()
+    );
+    println!(
+        "    {}",
+        "╰──────────────────────────────────────────────────────╯".cyan()
+    );
+    println!();
 
     if doc_count == 0 {
         println!(

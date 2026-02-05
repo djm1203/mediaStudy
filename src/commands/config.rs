@@ -6,34 +6,69 @@ use crate::config::Config;
 use crate::llm::GroqClient;
 
 pub async fn run() -> Result<()> {
-    println!("{}", "Configuration".bold().cyan());
-    println!("{}", "─".repeat(40).dimmed());
+    println!();
+    println!(
+        "    {}",
+        "╭──────────────────────────────────────────────────────╮".bright_black()
+    );
+    println!(
+        "    {}            {}            {}",
+        "│".bright_black(),
+        "⚙️  SETTINGS ⚙️".bold().white(),
+        "│".bright_black()
+    );
+    println!(
+        "    {}        {}        {}",
+        "│".bright_black(),
+        "Configure The Librarian to your liking".dimmed(),
+        "│".bright_black()
+    );
+    println!(
+        "    {}",
+        "╰──────────────────────────────────────────────────────╯".bright_black()
+    );
+    println!();
 
     let mut config = Config::load()?;
 
     let options = vec![
-        "Set Groq API key",
-        "Select default model",
-        "View current config",
-        "Back",
+        "🔑  Set API Key        │ Configure Groq API access",
+        "🤖  Select Model       │ Choose default LLM",
+        "📋  View Settings      │ See current configuration",
+        "←   Back",
     ];
 
     loop {
         let selection =
-            Select::new("What would you like to configure?", options.clone()).prompt()?;
+            Select::new("What would you like to configure?", options.clone()).prompt();
+
+        let selection = match selection {
+            Ok(s) => s,
+            Err(inquire::InquireError::OperationCanceled)
+            | Err(inquire::InquireError::OperationInterrupted) => break,
+            Err(e) => return Err(e.into()),
+        };
 
         match selection {
-            "Set Groq API key" => {
-                set_api_key(&mut config).await?;
+            s if s.contains("Set API Key") => {
+                if let Err(e) = set_api_key(&mut config).await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
             }
-            "Select default model" => {
-                select_model(&mut config).await?;
+            s if s.contains("Select Model") => {
+                if let Err(e) = select_model(&mut config).await {
+                    if !e.to_string().contains("cancelled") {
+                        eprintln!("{} {}", "Error:".red(), e);
+                    }
+                }
             }
-            "View current config" => {
+            s if s.contains("View Settings") => {
                 view_config(&config);
             }
-            "Back" => break,
-            _ => unreachable!(),
+            s if s.contains("Back") => break,
+            _ => {}
         }
 
         println!();
