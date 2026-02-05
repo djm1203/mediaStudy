@@ -1,153 +1,184 @@
-# Media Study
+# The Librarian
 
 ```
-  __  __          _ _       ____  _             _
- |  \/  | ___  __| (_) __ _/ ___|| |_ _   _  __| |_   _
- | |\/| |/ _ \/ _` | |/ _` \___ \| __| | | |/ _` | | | |
- | |  | |  __/ (_| | | (_| |___) | |_| |_| | (_| | |_| |
- |_|  |_|\___|\__,_|_|\__,_|____/ \__|\__,_|\__,_|\__, |
-                                                  |___/
+╔════════════════════════════════════════════════════════╗
+║                                                        ║
+║   ▀█▀ █ █ █▀▀   █   █ █▄▄ █▀█ ▄▀█ █▀█ █ ▄▀█ █▄ █     ║
+║    █  █▀█ ██▄   █▄▄ █ █▄█ █▀▄ █▀█ █▀▄ █ █▀█ █ ▀█     ║
+║                                                        ║
+║            ┌─────────────────────────────┐             ║
+║            │  📚 Your Study Companion 📚  │             ║
+║            └─────────────────────────────┘             ║
+╚════════════════════════════════════════════════════════╝
 ```
 
-A powerful CLI tool for ingesting various media types and studying with LLM-powered assistance. Create isolated knowledge "buckets" for different subjects, generate study guides, flashcards, quizzes, and get AI-powered answers grounded in your source materials.
+Your personal AI study companion. Ingest PDFs, lecture recordings, notes, and web articles into organized "books" (knowledge buckets), then chat with your materials, generate study guides, flashcards, quizzes, and get AI-powered answers grounded in your source content.
 
 ## Features
 
 - **Multi-format ingestion**: PDFs, text files, Markdown, audio, video, images (OCR), web articles, YouTube videos
-- **Knowledge isolation**: Organize materials into separate "buckets" (per class/project)
+- **Library organization**: Organize materials into separate "books" (buckets) per class/project
 - **Semantic search**: Local vector embeddings (all-MiniLM-L6-v2) with cosine similarity
-- **Study tools**: Generate study guides, flashcards, quizzes, and summaries
-- **Interactive chat**: Ask questions grounded in your ingested materials
+- **Study tools**: Generate study guides, flashcards, quizzes, and summaries - saved to your library
+- **Interactive chat**: Ask "The Librarian" questions grounded in your ingested materials
 - **Homework help**: Guided problem-solving mode
-- **Cross-platform**: Single binary for Windows, macOS, and Linux
+- **Beautiful CLI**: Polished terminal UI with visual library shelf and status dashboard
+- **Cross-platform**: Works on Windows, macOS, and Linux
 - **Privacy-first**: Embeddings generated locally, only LLM queries sent to API
 
 ## Prerequisites
 
 ### Required
+- **Rust**: Install from [rustup.rs](https://rustup.rs/)
 - **Groq API Key**: Sign up free at [console.groq.com](https://console.groq.com/)
 
 ### Optional (for specific media types)
 
 | Tool | Purpose | Installation |
 |------|---------|--------------|
-| **ffmpeg** | Video/audio processing | `apt install ffmpeg` / `brew install ffmpeg` |
-| **tesseract** | Image OCR | `apt install tesseract-ocr` / `brew install tesseract` |
-| **yt-dlp** | YouTube transcripts | `pip install yt-dlp` |
+| **FFmpeg** | Video/audio transcription | See [installation](#installing-optional-dependencies) |
+| **Tesseract** | Image/screenshot OCR | See [installation](#installing-optional-dependencies) |
 
 ## Installation
 
-### From Source
+### From Source (Recommended)
 
 ```bash
-git clone https://github.com/yourusername/mediaStudy.git
+# Clone the repository
+git clone https://github.com/djm1203/mediaStudy.git
 cd mediaStudy
-cargo install --path .
-```
 
-### Build for Development
-
-```bash
+# Build release binary
 cargo build --release
-./target/release/media-study
+
+# The binary is at ./target/release/librarian
+# Optionally, copy to your PATH:
+sudo cp target/release/librarian /usr/local/bin/
 ```
+
+### Installing Optional Dependencies
+
+#### Linux (Arch)
+```bash
+sudo pacman -S ffmpeg tesseract tesseract-data-eng
+```
+
+#### Linux (Ubuntu/Debian)
+```bash
+sudo apt install ffmpeg tesseract-ocr tesseract-ocr-eng
+```
+
+#### macOS
+```bash
+brew install ffmpeg tesseract
+```
+
+#### Windows
+- **FFmpeg**: Download from [ffmpeg.org](https://ffmpeg.org/download.html), add to PATH
+- **Tesseract**: Download from [UB-Mannheim](https://github.com/UB-Mannheim/tesseract/wiki), add to PATH
 
 ## Quick Start
 
 ```bash
 # 1. Configure your API key
-media-study config
+librarian config
 
-# 2. Create a knowledge bucket
-media-study bucket create "CS 101"
+# 2. Create a knowledge book (bucket)
+librarian bucket create "PSC-4395"
 
 # 3. Add study materials
-media-study add lecture-notes.pdf
-media-study add https://example.com/article
+librarian add lecture-notes.pdf
+librarian add ~/Documents/SchoolDocs/PSC/
 
 # 4. Chat with your materials
-media-study chat
+librarian chat
 
 # 5. Generate study materials
-media-study generate
+librarian generate
 ```
 
 ## Usage
 
-### Interactive Mode
+### Interactive Mode (Recommended)
 
-Just run `media-study` with no arguments for the interactive menu:
+Just run `librarian` with no arguments for the beautiful interactive menu:
 
 ```bash
-media-study
+librarian
 ```
+
+You'll see your library shelf with all your books, a status dashboard, and menu options.
 
 ### Commands
 
 ```bash
 # Content Management
-media-study add <path/url>        # Add files, directories, or URLs
-media-study list                   # List all documents
-media-study search <query>         # Search documents
-media-study docs                   # Manage documents (view/delete)
+librarian add <path/url>           # Add files, directories, or URLs
+librarian list                     # List all documents in current book
+librarian search <query>           # Search documents
+librarian docs                     # Manage documents (view/delete)
 
 # Study Tools
-media-study chat                   # Interactive Q&A with your materials
-media-study generate study-guide   # Generate comprehensive study guide
-media-study generate flashcards    # Generate flashcards
-media-study generate quiz          # Generate practice quiz
-media-study generate summary       # Generate summary
-media-study generate homework      # Interactive homework help
+librarian chat                     # Interactive Q&A with your materials
+librarian generate study-guide     # Generate comprehensive study guide
+librarian generate flashcards      # Generate flashcards
+librarian generate quiz            # Generate practice quiz
+librarian generate summary         # Generate summary
+librarian generate homework        # Interactive homework help
 
-# Organization
-media-study bucket create <name>   # Create a new bucket
-media-study bucket list            # List all buckets
-media-study bucket use <name>      # Switch to a bucket
-media-study bucket delete <name>   # Delete a bucket
+# Library Organization
+librarian bucket create <name>     # Create a new book
+librarian bucket list              # List all books
+librarian bucket use <name>        # Switch to a book
+librarian bucket delete <name>     # Delete a book
+librarian library                  # Alias for bucket management
 
 # Configuration
-media-study config                 # Configure API key and settings
+librarian config                   # Configure API key and settings
+librarian completions <shell>      # Generate shell completions
 ```
 
 ### Adding Content
 
 ```bash
-# Files
-media-study add textbook.pdf
-media-study add notes.md
-media-study add lecture.mp3
+# Single files
+librarian add textbook.pdf
+librarian add notes.md
+librarian add lecture.mp3
+librarian add screenshot.png        # Requires tesseract
 
 # Directories (batch import)
-media-study add ./course-materials/
+librarian add ./course-materials/
 
 # URLs
-media-study add https://example.com/article
-media-study add https://youtube.com/watch?v=VIDEO_ID
+librarian add https://example.com/article
+librarian add https://youtube.com/watch?v=VIDEO_ID
 
-# Images (OCR)
-media-study add diagram.png
+# Videos (requires ffmpeg)
+librarian add lecture-recording.mp4
 ```
 
 ### Supported Formats
 
-| Category | Extensions |
-|----------|------------|
-| Documents | `.pdf`, `.txt`, `.md` |
-| Audio | `.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac` |
-| Video | `.mp4`, `.mkv`, `.avi`, `.mov`, `.webm` |
-| Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff` |
-| Web | Any `http://` or `https://` URL |
+| Category | Extensions | Requirements |
+|----------|------------|--------------|
+| Documents | `.pdf`, `.txt`, `.md` | None |
+| Audio | `.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac` | FFmpeg + API key |
+| Video | `.mp4`, `.mkv`, `.avi`, `.mov`, `.webm` | FFmpeg + API key |
+| Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff` | Tesseract |
+| Web | Any `http://` or `https://` URL | None |
 
 ## Configuration
 
 Configuration is stored at:
-- **Linux/macOS**: `~/.config/media-study/config.toml`
+- **Linux**: `~/.config/media-study/config.toml`
+- **macOS**: `~/Library/Application Support/media-study/config.toml`
 - **Windows**: `%APPDATA%\media-study\config.toml`
 
 ```toml
 groq_api_key = "gsk_..."
-default_model = "openai/gpt-oss-120b"
-current_bucket = "CS-101"
+default_model = "llama-3.3-70b-versatile"
+current_bucket = "psc-4395"
 ```
 
 Environment variable alternative:
@@ -157,20 +188,20 @@ export GROQ_API_KEY="gsk_..."
 
 ## Shell Completions
 
-Generate shell completions for your preferred shell:
+Generate shell completions for tab-completion support:
 
 ```bash
 # Bash (add to ~/.bashrc)
-media-study completions bash >> ~/.bashrc
+librarian completions bash >> ~/.bashrc
 
 # Zsh (add to ~/.zshrc)
-media-study completions zsh >> ~/.zshrc
+librarian completions zsh >> ~/.zshrc
 
 # Fish
-media-study completions fish > ~/.config/fish/completions/media-study.fish
+librarian completions fish > ~/.config/fish/completions/librarian.fish
 
 # PowerShell
-media-study completions powershell >> $PROFILE
+librarian completions powershell >> $PROFILE
 ```
 
 ## How It Works
@@ -187,47 +218,87 @@ media-study completions powershell >> $PROFILE
 └─────────────┘     └──────────────┘     └─────────────┘
 ```
 
-1. **Ingestion**: Extract text from various formats
-2. **Chunking**: Split into ~1000 char chunks with 200 char overlap
-3. **Embedding**: Generate vectors locally (all-MiniLM-L6-v2)
-4. **Storage**: SQLite database per bucket
-5. **Search**: Cosine similarity on query embedding
-6. **Generation**: Send relevant context to Groq LLM
+1. **Ingestion**: Extract text from various formats (PDF parsing, Whisper transcription, OCR)
+2. **Chunking**: Split into ~1000 char chunks with 200 char overlap for context
+3. **Embedding**: Generate 384-dim vectors locally using all-MiniLM-L6-v2
+4. **Storage**: SQLite database per book (bucket) with FTS5 full-text search
+5. **Search**: Cosine similarity search on query embedding to find relevant chunks
+6. **Generation**: Send top relevant chunks as context to Groq LLM for grounded responses
 
-## Models
+## Models Used
 
 | Purpose | Model | Notes |
 |---------|-------|-------|
-| Embeddings | all-MiniLM-L6-v2 | Local, fast, 384-dim |
-| Transcription | whisper-large-v3 | Via Groq API |
-| Chat/Generation | openai/gpt-oss-120b | High quality (default) |
-| Fast queries | llama-3.1-8b-instant | Lower latency |
+| Embeddings | all-MiniLM-L6-v2 | Local, ~90MB download on first run |
+| Transcription | whisper-large-v3 | Via Groq API, for audio/video |
+| Chat/Generation | llama-3.3-70b-versatile | High quality (default) |
+| Alternative | llama-3.1-8b-instant | Faster, lower latency |
+
+## Data Storage
+
+Data is stored at:
+- **Linux**: `~/.local/share/media-study/`
+- **macOS**: `~/Library/Application Support/media-study/`
+- **Windows**: `%APPDATA%\media-study\`
+
+Structure:
+```
+media-study/
+├── config.toml              # Configuration
+├── default.db               # Default database (no bucket)
+└── buckets/
+    ├── psc-4395/
+    │   ├── documents.db     # SQLite database
+    │   └── generated/       # Generated study materials
+    └── cs-101/
+        ├── documents.db
+        └── generated/
+```
 
 ## Project Structure
 
 ```
 src/
-├── main.rs           # CLI entry point
+├── main.rs           # CLI entry point & interactive UI
 ├── config.rs         # Configuration management
-├── bucket/           # Knowledge bucket isolation
+├── bucket/           # Library/bucket isolation
 ├── commands/         # CLI command implementations
-├── embeddings/       # Local embedding generation
-├── ingest/           # Media ingestion (PDF, URL, OCR, etc.)
-├── llm/              # LLM clients (Groq, Whisper)
+│   ├── add.rs        # Content ingestion
+│   ├── chat.rs       # Interactive chat
+│   ├── generate.rs   # Study material generation
+│   ├── docs.rs       # Document management
+│   ├── bucket.rs     # Bucket management
+│   └── config.rs     # Settings UI
+├── embeddings/       # Local embedding generation (FastEmbed)
+├── ingest/           # Media ingestion
+│   ├── pdf.rs        # PDF extraction
+│   ├── text.rs       # Text/Markdown
+│   ├── url.rs        # Web scraping & YouTube
+│   ├── ocr.rs        # Image OCR (Tesseract)
+│   └── chunker.rs    # Text chunking
+├── llm/              # LLM clients
+│   ├── groq.rs       # Groq chat API
+│   └── whisper.rs    # Groq Whisper transcription
 └── storage/          # SQLite storage layer
+    ├── db.rs         # Database connection
+    ├── documents.rs  # Document CRUD
+    └── chunks.rs     # Chunk/embedding storage
 ```
 
 ## Development
 
 ```bash
-# Run tests
-cargo test
+# Run in development mode
+cargo run
 
 # Run with debug output
 RUST_LOG=debug cargo run
 
+# Run tests
+cargo test
+
 # Check for issues
-cargo clippy
+cargo clippy -- -D warnings
 
 # Format code
 cargo fmt
@@ -237,13 +308,16 @@ cargo fmt
 
 ### "No API key configured"
 ```bash
-media-study config
+librarian config
 # Or set environment variable:
 export GROQ_API_KEY="gsk_..."
 ```
 
-### "ffmpeg not found"
+### "FFmpeg not found" (for video/audio)
 ```bash
+# Arch
+sudo pacman -S ffmpeg
+
 # Ubuntu/Debian
 sudo apt install ffmpeg
 
@@ -251,21 +325,49 @@ sudo apt install ffmpeg
 brew install ffmpeg
 ```
 
-### "tesseract not found"
+### "Tesseract not found" (for images)
 ```bash
+# Arch
+sudo pacman -S tesseract tesseract-data-eng
+
 # Ubuntu/Debian
-sudo apt install tesseract-ocr
+sudo apt install tesseract-ocr tesseract-ocr-eng
 
 # macOS
 brew install tesseract
 ```
 
+### PDF extraction crashes
+Some complex PDFs may cause issues. The tool automatically falls back to an alternative extractor (lopdf) when the primary one fails.
+
 ### Slow first run
 The embedding model (~90MB) is downloaded on first use. Subsequent runs are fast.
+
+### Large video files
+Video transcription uploads audio to Groq's Whisper API. Very large files may take time or hit size limits. Consider splitting long recordings.
 
 ## Contributing
 
 Contributions welcome! Please feel free to submit issues and pull requests.
+
+```bash
+# Fork and clone
+git clone https://github.com/YOUR_USERNAME/mediaStudy.git
+
+# Create a branch
+git checkout -b feature/amazing-feature
+
+# Make changes, then
+cargo fmt
+cargo clippy -- -D warnings
+cargo test
+
+# Commit and push
+git commit -m "Add amazing feature"
+git push origin feature/amazing-feature
+
+# Open a Pull Request
+```
 
 ## License
 
@@ -273,7 +375,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-- [Groq](https://groq.com/) - Fast LLM inference
-- [fastembed](https://github.com/Anush008/fastembed-rs) - Local embeddings
-- [clap](https://github.com/clap-rs/clap) - CLI framework
-- [inquire](https://github.com/mikaelmello/inquire) - Interactive prompts
+- [Groq](https://groq.com/) - Ultra-fast LLM inference
+- [FastEmbed](https://github.com/Anush008/fastembed-rs) - Local embeddings in Rust
+- [clap](https://github.com/clap-rs/clap) - Command-line argument parsing
+- [inquire](https://github.com/mikaelmello/inquire) - Beautiful interactive prompts
+- [colored](https://github.com/colored-rs/colored) - Terminal colors
+- [indicatif](https://github.com/console-rs/indicatif) - Progress bars
+
+---
+
+Made with 📚 for students, by students.
