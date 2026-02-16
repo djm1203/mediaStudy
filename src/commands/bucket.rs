@@ -53,38 +53,38 @@ pub async fn run() -> Result<()> {
 
         match selection {
             s if s.contains("Create new book") => {
-                if let Err(e) = create_bucket().await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = create_bucket().await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("Switch book") => {
-                if let Err(e) = switch_bucket().await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = switch_bucket().await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("List all books") => {
-                if let Err(e) = list_buckets().await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = list_buckets().await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("Delete book") => {
-                if let Err(e) = delete_bucket().await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = delete_bucket().await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("Use no book") => {
-                if let Err(e) = clear_bucket().await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = clear_bucket().await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("Back") => break,
@@ -143,7 +143,7 @@ pub async fn list() -> Result<()> {
 
     if buckets.is_empty() {
         println!("{}", "No buckets found.".dimmed());
-        println!("Create one with {}", "media-study bucket create".cyan());
+        println!("Create one with {}", "librarian bucket create".cyan());
         return Ok(());
     }
 

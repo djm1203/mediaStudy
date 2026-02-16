@@ -79,7 +79,7 @@ pub async fn fetch_url(url_str: &str) -> Result<UrlContent> {
 
     // Fetch the page with redirect policy to prevent SSRF via redirects
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (compatible; media-study/0.1)")
+        .user_agent("Mozilla/5.0 (compatible; librarian/0.1)")
         .timeout(std::time::Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()?;
@@ -319,7 +319,7 @@ async fn fetch_youtube_transcript(url: &str) -> Result<UrlContent> {
         .unwrap_or(std::time::Duration::from_secs(0))
         .as_secs();
     let pid = std::process::id();
-    let temp_prefix = format!("media-study-yt-{}-{}", pid, timestamp);
+    let temp_prefix = format!("librarian-yt-{}-{}", pid, timestamp);
     let temp_pattern = format!("/tmp/{}-%(id)s", temp_prefix);
 
     // First, get video info

@@ -60,16 +60,25 @@ struct Delta {
 }
 
 impl GroqClient {
-    /// Available models on Groq
-    pub const MODELS: &'static [(&'static str, &'static str)] = &[
-        ("openai/gpt-oss-120b", "GPT-OSS 120B - Most powerful"),
+    /// Available models on Groq: (id, description, context_window_tokens)
+    pub const MODELS: &'static [(&'static str, &'static str, usize)] = &[
+        (
+            "openai/gpt-oss-120b",
+            "GPT-OSS 120B - Most powerful",
+            131072,
+        ),
         (
             "llama-3.3-70b-versatile",
             "Llama 3.3 70B - Best for complex tasks",
+            131072,
         ),
-        ("llama-3.1-8b-instant", "Llama 3.1 8B - Fast and efficient"),
-        ("mixtral-8x7b-32768", "Mixtral 8x7B - Good balance"),
-        ("gemma2-9b-it", "Gemma 2 9B - Google's model"),
+        (
+            "llama-3.1-8b-instant",
+            "Llama 3.1 8B - Fast and efficient",
+            131072,
+        ),
+        ("mixtral-8x7b-32768", "Mixtral 8x7B - Good balance", 32768),
+        ("gemma2-9b-it", "Gemma 2 9B - Google's model", 8192),
     ];
 
     pub fn new(api_key: String, model: Option<String>) -> Self {
@@ -78,6 +87,29 @@ impl GroqClient {
             api_key,
             model: model.unwrap_or_else(|| "openai/gpt-oss-120b".to_string()),
         }
+    }
+
+    /// Get the context window size (in tokens) for the current model
+    pub fn context_window(&self) -> usize {
+        Self::MODELS
+            .iter()
+            .find(|(id, _, _)| *id == self.model)
+            .map(|(_, _, ctx)| *ctx)
+            .unwrap_or(8192)
+    }
+
+    /// Calculate available context chars for RAG, given current usage
+    /// Uses ~4 chars/token estimate
+    pub fn available_context_chars(
+        &self,
+        system_chars: usize,
+        conversation_chars: usize,
+        reserved_response_tokens: usize,
+    ) -> usize {
+        let total_tokens = self.context_window();
+        let used_tokens = (system_chars + conversation_chars) / 4;
+        let available_tokens = total_tokens.saturating_sub(used_tokens + reserved_response_tokens);
+        available_tokens * 4
     }
 
     /// Send a chat message and get a response (non-streaming)

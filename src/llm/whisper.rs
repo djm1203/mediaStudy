@@ -155,7 +155,7 @@ pub async fn extract_audio_from_video(video_path: &Path) -> Result<std::path::Pa
         .as_secs();
     let pid = std::process::id();
     let output_path =
-        std::env::temp_dir().join(format!("media-study-audio-{}-{}.mp3", pid, timestamp));
+        std::env::temp_dir().join(format!("librarian-audio-{}-{}.mp3", pid, timestamp));
     let output_str = output_path
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in output path"))?;

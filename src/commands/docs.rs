@@ -49,31 +49,31 @@ pub async fn run() -> Result<()> {
 
         match selection {
             s if s.contains("List all documents") => {
-                if let Err(e) = list().await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = list().await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("Search documents") => {
-                if let Err(e) = search(None).await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = search(None).await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("View document") => {
-                if let Err(e) = view_document().await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = view_document().await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("Delete document") => {
-                if let Err(e) = delete_document().await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = delete_document().await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("Back") => break,
@@ -95,7 +95,7 @@ pub async fn list() -> Result<()> {
 
     if documents.is_empty() {
         println!("{}", "No documents found.".dimmed());
-        println!("Use {} to add content.", "media-study add".cyan());
+        println!("Use {} to add content.", "librarian add".cyan());
         return Ok(());
     }
 

@@ -1,12 +1,12 @@
 use anyhow::Result;
 use colored::Colorize;
-use inquire::Text;
+use inquire::{Select, Text};
 
 use crate::bucket;
 use crate::config::Config;
 use crate::embeddings;
 use crate::llm::{GroqClient, groq::Message};
-use crate::storage::{ChunkStore, Database, DocumentStore};
+use crate::storage::{ChunkStore, ConversationStore, Database, DocumentStore};
 
 const GROUNDED_SYSTEM_PROMPT: &str = r#"You are The Librarian, a knowledgeable study assistant helping a student learn from their course materials.
 
@@ -23,7 +23,7 @@ const NO_DOCS_SYSTEM_PROMPT: &str = r#"You are The Librarian, a knowledgeable st
 
 Help them by:
 1. Answering general questions to the best of your ability
-2. Suggesting they add study materials with 'media-study add <file>'
+2. Suggesting they add study materials with 'librarian add <file>'
 3. Being clear when you're using general knowledge vs. their specific materials"#;
 
 pub async fn run() -> Result<()> {
@@ -35,7 +35,7 @@ pub async fn run() -> Result<()> {
             println!(
                 "{} No API key configured. Run {} to set up.",
                 "Error:".red().bold(),
-                "media-study config".cyan()
+                "librarian config".cyan()
             );
             return Ok(());
         }
@@ -47,6 +47,7 @@ pub async fn run() -> Result<()> {
     let db = Database::open()?;
     let doc_store = DocumentStore::new(&db);
     let chunk_store = ChunkStore::new(&db);
+    let conv_store = ConversationStore::new(&db);
 
     // Initialize chunks table if needed
     chunk_store.init_schema()?;
@@ -113,7 +114,7 @@ pub async fn run() -> Result<()> {
         println!(
             "{} No documents in this bucket. Add some with {}",
             "Note:".yellow(),
-            "media-study add <file>".cyan()
+            "librarian add <file>".cyan()
         );
         println!("Chat will use general knowledge only.\n");
     } else if chunk_count == 0 {
@@ -122,6 +123,10 @@ pub async fn run() -> Result<()> {
             "Note:".yellow()
         );
     }
+
+    // --- Conversation persistence: choose or create conversation ---
+    let conversation_id = pick_or_create_conversation(&conv_store)?;
+    let mut is_first_message = true;
 
     // Choose system prompt based on whether we have documents
     let system_prompt = if doc_count > 0 {
@@ -134,6 +139,23 @@ pub async fn run() -> Result<()> {
         role: "system".to_string(),
         content: system_prompt.to_string(),
     }];
+
+    // Load previous messages if resuming a conversation
+    let prev_messages = conv_store.get_messages(conversation_id)?;
+    if !prev_messages.is_empty() {
+        is_first_message = false;
+        println!(
+            "{} Loaded {} previous messages.\n",
+            "↻".cyan(),
+            prev_messages.len()
+        );
+        for msg in &prev_messages {
+            conversation.push(Message {
+                role: msg.role.clone(),
+                content: msg.content.clone(),
+            });
+        }
+    }
 
     loop {
         let input = Text::new("You:")
@@ -151,12 +173,33 @@ pub async fn run() -> Result<()> {
             continue;
         }
 
+        // Auto-title from first user message
+        if is_first_message {
+            let title: String = input.chars().take(60).collect();
+            let title = if let Some(pos) = title.rfind(' ') {
+                &title[..pos]
+            } else {
+                &title
+            };
+            conv_store.update_title(conversation_id, title)?;
+            is_first_message = false;
+        }
+
+        // --- Query enhancement for better embedding search ---
+        let enhanced_query = crate::search::enhance_query(input);
+
+        // --- Dynamic context sizing ---
+        let conversation_chars: usize = conversation.iter().map(|m| m.content.len()).sum();
+        let max_context = client
+            .available_context_chars(system_prompt.len(), conversation_chars, 4096)
+            .clamp(2000, 30000);
+
         // Search for relevant context using semantic search
         let context = if chunk_count > 0 {
-            build_semantic_context(&chunk_store, &doc_store, input)?
+            build_semantic_context(&chunk_store, &doc_store, &enhanced_query, max_context)?
         } else if doc_count > 0 {
             // Fallback to FTS if no chunks
-            build_fts_context(&doc_store, input)?
+            build_fts_context(&doc_store, input, max_context)?
         } else {
             String::new()
         };
@@ -197,8 +240,12 @@ pub async fn run() -> Result<()> {
                 }
                 conversation.push(Message {
                     role: "assistant".to_string(),
-                    content: response,
+                    content: response.clone(),
                 });
+
+                // --- Persist messages ---
+                conv_store.add_message(conversation_id, "user", input)?;
+                conv_store.add_message(conversation_id, "assistant", &response)?;
             }
             Err(e) => {
                 println!("\n{} {}\n", "Error:".red().bold(), e);
@@ -210,23 +257,77 @@ pub async fn run() -> Result<()> {
     Ok(())
 }
 
-/// Build context using semantic search (embeddings)
+/// Let user pick a recent conversation or start a new one
+fn pick_or_create_conversation(store: &ConversationStore) -> Result<i64> {
+    let recent = store.list_recent(5)?;
+
+    if recent.is_empty() {
+        let id = store.create(None)?;
+        println!("{} Started new conversation.\n", "✦".cyan());
+        return Ok(id);
+    }
+
+    let mut options: Vec<String> = recent
+        .iter()
+        .map(|c| {
+            let title = c.title.as_deref().unwrap_or("(untitled)");
+            let date = c.updated_at.format("%m/%d %H:%M");
+            format!("💬  {} │ {}", title, date)
+        })
+        .collect();
+    options.push("🆕  New conversation".to_string());
+
+    let selection = Select::new("Resume or start new?", options).prompt();
+
+    match selection {
+        Ok(s) if s.contains("New conversation") => {
+            let id = store.create(None)?;
+            println!("{} Started new conversation.\n", "✦".cyan());
+            Ok(id)
+        }
+        Ok(s) => {
+            // Find which conversation was selected
+            let idx = recent
+                .iter()
+                .position(|c| {
+                    let title = c.title.as_deref().unwrap_or("(untitled)");
+                    s.contains(title)
+                })
+                .unwrap_or(0);
+            let conv = &recent[idx];
+            println!(
+                "{} Resuming: {}\n",
+                "↻".cyan(),
+                conv.title.as_deref().unwrap_or("(untitled)").bold()
+            );
+            Ok(conv.id)
+        }
+        Err(_) => {
+            // On cancel, start new
+            let id = store.create(None)?;
+            Ok(id)
+        }
+    }
+}
+
+/// Build context using semantic search (embeddings) with dynamic sizing and dedup
 fn build_semantic_context(
     chunk_store: &ChunkStore,
     doc_store: &DocumentStore,
     query: &str,
+    max_context_chars: usize,
 ) -> Result<String> {
     // Generate query embedding
     let query_embedding = match embeddings::embed_text(query) {
         Ok(emb) => emb,
-        Err(_) => return build_fts_context(doc_store, query), // Fallback to FTS
+        Err(_) => return build_fts_context(doc_store, query, max_context_chars),
     };
 
     // Get all chunks with embeddings
     let chunks = chunk_store.get_all_with_embeddings()?;
 
     if chunks.is_empty() {
-        return build_fts_context(doc_store, query);
+        return build_fts_context(doc_store, query, max_context_chars);
     }
 
     // Convert to format for similarity search
@@ -239,49 +340,60 @@ fn build_semantic_context(
     let similar = embeddings::find_similar(&query_embedding, &chunk_embeddings, 5);
 
     if similar.is_empty() {
-        return build_fts_context(doc_store, query);
+        return build_fts_context(doc_store, query, max_context_chars);
     }
 
-    // Build context from similar chunks
+    // Collect similar chunks for deduplication
+    let similar_ids: Vec<i64> = similar.iter().map(|(id, _)| *id).collect();
+    let matched_chunks: Vec<(i64, String)> = chunks
+        .iter()
+        .filter(|c| similar_ids.contains(&c.id))
+        .map(|c| (c.id, c.content.clone()))
+        .collect();
+
+    // Deduplicate chunks
+    let deduped = crate::search::deduplicate_chunks(matched_chunks);
+
+    // Build context from deduped chunks
     let mut context = String::new();
     let mut total_chars = 0;
-    const MAX_CONTEXT_CHARS: usize = 6000;
 
-    // Get chunk IDs and their similarities
-    let similar_ids: Vec<i64> = similar.iter().map(|(id, _)| *id).collect();
-
-    // Find the chunks and their documents
-    for chunk in &chunks {
-        if !similar_ids.contains(&chunk.id) {
-            continue;
-        }
-
-        if total_chars >= MAX_CONTEXT_CHARS {
+    for (chunk_id, content) in &deduped {
+        if total_chars >= max_context_chars {
             break;
         }
 
-        // Get document filename
-        let doc = doc_store.get(chunk.document_id)?;
+        // Find original chunk for metadata
+        let chunk = chunks.iter().find(|c| c.id == *chunk_id);
+        let (doc_id, chunk_idx) = chunk
+            .map(|c| (c.document_id, c.chunk_index))
+            .unwrap_or((0, 0));
+
+        let doc = doc_store.get(doc_id)?;
         let filename = doc
             .map(|d| d.filename)
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let remaining = MAX_CONTEXT_CHARS - total_chars;
-        let content = truncate_content(&chunk.content, remaining.min(1500));
+        let remaining = max_context_chars - total_chars;
+        let truncated = truncate_content(content, remaining.min(1500));
 
         context.push_str(&format!(
             "--- Document: {} (chunk {}) ---\n{}\n\n",
-            filename, chunk.chunk_index, content
+            filename, chunk_idx, truncated
         ));
 
-        total_chars += content.len() + filename.len() + 50;
+        total_chars += truncated.len() + filename.len() + 50;
     }
 
     Ok(context)
 }
 
-/// Build context using full-text search (fallback)
-fn build_fts_context(store: &DocumentStore, query: &str) -> Result<String> {
+/// Build context using full-text search (fallback) with dynamic sizing
+fn build_fts_context(
+    store: &DocumentStore,
+    query: &str,
+    max_context_chars: usize,
+) -> Result<String> {
     let results = store.search(query)?;
 
     if results.is_empty() {
@@ -303,14 +415,13 @@ fn build_fts_context(store: &DocumentStore, query: &str) -> Result<String> {
 
     let mut context = String::new();
     let mut total_chars = 0;
-    const MAX_CONTEXT_CHARS: usize = 6000;
 
     for doc in results.iter().take(5) {
-        if total_chars >= MAX_CONTEXT_CHARS {
+        if total_chars >= max_context_chars {
             break;
         }
 
-        let remaining = MAX_CONTEXT_CHARS - total_chars;
+        let remaining = max_context_chars - total_chars;
         let preview = truncate_content(&doc.content, remaining.min(2000));
 
         context.push_str(&format!(

@@ -10,6 +10,8 @@ mod config;
 mod embeddings;
 mod ingest;
 mod llm;
+mod render;
+mod search;
 mod storage;
 
 /// ASCII art banner for the application
@@ -52,9 +54,11 @@ fn print_header(title: &str) {
 #[derive(Parser)]
 #[command(name = "librarian")]
 #[command(about = "The Librarian - Your personal AI study companion")]
-#[command(long_about = "The Librarian helps you study smarter by ingesting your course materials \
+#[command(
+    long_about = "The Librarian helps you study smarter by ingesting your course materials \
 (PDFs, videos, audio, notes) and letting you chat with them, generate study guides, \
-flashcards, quizzes, and more. Powered by Groq LLM and local embeddings.")]
+flashcards, quizzes, and more. Powered by Groq LLM and local embeddings."
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -97,6 +101,10 @@ enum Commands {
         #[command(subcommand)]
         action: Option<GenerateAction>,
     },
+    /// Spaced repetition study session
+    Review,
+    /// Test your knowledge interactively
+    Quiz,
     /// Generate shell completions
     Completions {
         /// Shell to generate completions for
@@ -225,6 +233,14 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Some(Commands::Review) => {
+            commands::bucket::print_bucket_context();
+            commands::review::run().await?;
+        }
+        Some(Commands::Quiz) => {
+            commands::bucket::print_bucket_context();
+            commands::quiz::run().await?;
+        }
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();
             let name = cmd.get_name().to_string();
@@ -242,30 +258,55 @@ async fn main() -> Result<()> {
 /// Display the library shelf with buckets as books
 fn print_library_shelf() {
     let buckets = bucket::Bucket::list_all().unwrap_or_default();
-    let current = bucket::get_current_bucket()
-        .ok()
-        .flatten()
-        .map(|b| b.name);
+    let current = bucket::get_current_bucket().ok().flatten().map(|b| b.name);
 
     if buckets.is_empty() {
-        println!("    {}", "┌─────────────────────────────────────────────┐".dimmed());
-        println!("    {}  {}  {}", "│".dimmed(), "Your library is empty. Add a bucket!".yellow(), "│".dimmed());
-        println!("    {}", "└─────────────────────────────────────────────┘".dimmed());
-        println!("    {}", "═══════════════════════════════════════════════".dimmed());
+        println!(
+            "    {}",
+            "┌─────────────────────────────────────────────┐".dimmed()
+        );
+        println!(
+            "    {}  {}  {}",
+            "│".dimmed(),
+            "Your library is empty. Add a bucket!".yellow(),
+            "│".dimmed()
+        );
+        println!(
+            "    {}",
+            "└─────────────────────────────────────────────┘".dimmed()
+        );
+        println!(
+            "    {}",
+            "═══════════════════════════════════════════════".dimmed()
+        );
         return;
     }
 
     // Draw shelf with books
-    println!("    {}", "┌─────────────────────────────────────────────┐".cyan());
-    println!("    {}       {}       {}", "│".cyan(), "📚 YOUR LIBRARY 📚".bold().white(), "│".cyan());
-    println!("    {}", "├─────────────────────────────────────────────┤".cyan());
+    println!(
+        "    {}",
+        "┌─────────────────────────────────────────────┐".cyan()
+    );
+    println!(
+        "    {}       {}       {}",
+        "│".cyan(),
+        "📚 YOUR LIBRARY 📚".bold().white(),
+        "│".cyan()
+    );
+    println!(
+        "    {}",
+        "├─────────────────────────────────────────────┤".cyan()
+    );
 
     // Draw books on shelf
     let mut book_row = String::from("    │ ");
     for bucket_name in &buckets {
         let is_current = current.as_ref() == Some(bucket_name);
         let book = if is_current {
-            format!(" 📖 {} ", bucket_name).on_cyan().black().to_string()
+            format!(" 📖 {} ", bucket_name)
+                .on_cyan()
+                .black()
+                .to_string()
         } else {
             format!(" 📕 {} ", bucket_name).to_string()
         };
@@ -277,11 +318,17 @@ fn print_library_shelf() {
     if display_len < 50 {
         book_row.push_str(&" ".repeat(50 - display_len));
     }
-    book_row.push_str("│");
+    book_row.push('│');
     println!("{}", book_row.cyan());
 
-    println!("    {}", "└─────────────────────────────────────────────┘".cyan());
-    println!("    {}", "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀".yellow());
+    println!(
+        "    {}",
+        "└─────────────────────────────────────────────┘".cyan()
+    );
+    println!(
+        "    {}",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀".yellow()
+    );
 }
 
 /// Print the status dashboard
@@ -315,24 +362,41 @@ fn print_dashboard() {
         .unwrap_or(false);
 
     println!();
-    println!("    {}", "╭──────────────────── STATUS ────────────────────╮".bright_black());
-    println!("    {}  {} {}",
+    println!(
+        "    {}",
+        "╭──────────────────── STATUS ────────────────────╮".bright_black()
+    );
+    println!(
+        "    {}  {} {}",
         "│".bright_black(),
         "📖 Current Book:".bold(),
-        if current_bucket.is_some() { bucket_name.cyan().to_string() } else { bucket_name.dimmed().to_string() }
+        if current_bucket.is_some() {
+            bucket_name.cyan().to_string()
+        } else {
+            bucket_name.dimmed().to_string()
+        }
     );
-    println!("    {}  {} {} documents, {} chunks",
+    println!(
+        "    {}  {} {} documents, {} chunks",
         "│".bright_black(),
         "📄 Contents:".bold(),
         doc_count.to_string().green(),
         chunk_count.to_string().green()
     );
-    println!("    {}  {} {}",
+    println!(
+        "    {}  {} {}",
         "│".bright_black(),
         "🔑 API Key:".bold(),
-        if has_api_key { "Ready".green().to_string() } else { "Not configured".red().to_string() }
+        if has_api_key {
+            "Ready".green().to_string()
+        } else {
+            "Not configured".red().to_string()
+        }
     );
-    println!("    {}", "╰─────────────────────────────────────────────────╯".bright_black());
+    println!(
+        "    {}",
+        "╰─────────────────────────────────────────────────╯".bright_black()
+    );
     println!();
 }
 
@@ -364,6 +428,8 @@ async fn run_interactive() -> Result<()> {
             "📥  Add Knowledge        │ Import files, URLs, videos",
             "💬  Ask the Librarian    │ Chat with your materials",
             "📝  Study Tools          │ Generate guides, flashcards, quizzes",
+            "🔁  Review               │ Spaced repetition study session",
+            "🎯  Quiz                 │ Test your knowledge interactively",
             "───────────────────────────────────────────────",
             "📋  Browse Collection    │ List all documents",
             "🔍  Search               │ Find specific content",
@@ -404,6 +470,8 @@ async fn run_interactive() -> Result<()> {
             s if s.contains("Add Knowledge") => commands::add::run(None).await,
             s if s.contains("Ask the Librarian") => commands::chat::run().await,
             s if s.contains("Study Tools") => commands::generate::run().await,
+            s if s.contains("Review") => commands::review::run().await,
+            s if s.contains("Quiz") => commands::quiz::run().await,
             s if s.contains("Browse Collection") => commands::docs::list().await,
             s if s.contains("Search") => commands::docs::search(None).await,
             s if s.contains("Manage Documents") => commands::docs::run().await,
@@ -434,9 +502,25 @@ async fn run_interactive() -> Result<()> {
 
 fn print_farewell() {
     println!();
-    println!("    {}", "╭─────────────────────────────────────────╮".cyan());
-    println!("    {}   {}   {}", "│".cyan(), "📚 Thanks for visiting The Librarian! 📚".bold(), "│".cyan());
-    println!("    {}          {}          {}", "│".cyan(), "Happy studying! 🎓".green(), "│".cyan());
-    println!("    {}", "╰─────────────────────────────────────────╯".cyan());
+    println!(
+        "    {}",
+        "╭─────────────────────────────────────────╮".cyan()
+    );
+    println!(
+        "    {}   {}   {}",
+        "│".cyan(),
+        "📚 Thanks for visiting The Librarian! 📚".bold(),
+        "│".cyan()
+    );
+    println!(
+        "    {}          {}          {}",
+        "│".cyan(),
+        "Happy studying! 🎓".green(),
+        "│".cyan()
+    );
+    println!(
+        "    {}",
+        "╰─────────────────────────────────────────╯".cyan()
+    );
     println!();
 }

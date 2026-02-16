@@ -124,6 +124,25 @@ impl Database {
             [],
         )?;
 
+        // Study items table (spaced repetition)
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS study_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER,
+                item_type TEXT NOT NULL,
+                front TEXT NOT NULL,
+                back TEXT NOT NULL,
+                next_review_date TEXT NOT NULL,
+                interval_days REAL NOT NULL DEFAULT 1.0,
+                ease_factor REAL NOT NULL DEFAULT 2.5,
+                review_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
+            )",
+            [],
+        )?;
+
         Ok(())
     }
 }

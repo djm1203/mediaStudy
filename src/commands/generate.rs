@@ -197,7 +197,7 @@ pub async fn homework_help() -> Result<()> {
             println!(
                 "{} No API key configured. Run {} to set up.",
                 "Error:".red().bold(),
-                "media-study config".cyan()
+                "librarian config".cyan()
             );
             return Ok(());
         }
@@ -289,7 +289,7 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
             println!(
                 "{} No API key configured. Run {} to set up.",
                 "Error:".red().bold(),
-                "media-study config".cyan()
+                "librarian config".cyan()
             );
             return Ok(());
         }
@@ -304,7 +304,7 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
         println!(
             "{} No documents found in current bucket. Add materials first with {}",
             "Error:".red(),
-            "media-study add".cyan()
+            "librarian add".cyan()
         );
         return Ok(());
     }
@@ -354,6 +354,9 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
 
     match client.chat_stream(&messages).await {
         Ok(response) => {
+            // Render formatted markdown version
+            println!("\n{}", "─── Formatted Output ───".dimmed());
+            crate::render::render_markdown(&response);
             println!("{}", "─".repeat(50).dimmed());
 
             // Offer to save
@@ -388,13 +391,22 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
 
                 // Save the file
                 std::fs::write(&save_path, &response)?;
-                println!("{} Saved to {}", "✓".green(), save_path.display().to_string().cyan());
+                println!(
+                    "{} Saved to {}",
+                    "✓".green(),
+                    save_path.display().to_string().cyan()
+                );
 
                 // If user wants to add to library, ingest it
                 if save.contains("add to library") {
                     ingest_generated_content(&save_path, &filename, name, &response)?;
                     println!("{} Added to your library - now searchable!", "✓".green());
                 }
+            }
+
+            // Offer to save as study items for spaced repetition
+            if name == "Flashcards" || name == "Quiz" {
+                offer_save_study_items(name, &response)?;
             }
         }
         Err(e) => {
@@ -403,6 +415,130 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
     }
 
     Ok(())
+}
+
+/// Parse generated flashcards/quiz output into study items and offer to save
+fn offer_save_study_items(content_type: &str, response: &str) -> Result<()> {
+    let items = parse_qa_pairs(content_type, response);
+
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    println!(
+        "\n📚 Found {} study items to save for spaced repetition.",
+        items.len().to_string().cyan()
+    );
+
+    let opts = vec![
+        "💾  Save for spaced repetition │ Review these later",
+        "❌  Skip",
+    ];
+    let choice = Select::new("Save study items?", opts).prompt();
+
+    if let Ok(s) = choice {
+        if s.contains("Save") {
+            let db = Database::open()?;
+            let store = crate::storage::StudyStore::new(&db);
+
+            let bulk: Vec<(Option<i64>, &str, &str, &str)> = items
+                .iter()
+                .map(|(item_type, front, back)| {
+                    (None, item_type.as_str(), front.as_str(), back.as_str())
+                })
+                .collect();
+
+            let count = store.bulk_insert(&bulk)?;
+            println!(
+                "{} Saved {} items for spaced repetition!",
+                "✓".green(),
+                count
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse Q/A pairs from generated output
+#[allow(clippy::needless_range_loop)]
+fn parse_qa_pairs(content_type: &str, text: &str) -> Vec<(String, String, String)> {
+    let mut items = Vec::new();
+    let item_type = if content_type == "Flashcards" {
+        "flashcard"
+    } else {
+        "quiz"
+    };
+
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i].trim();
+
+        // Match "Q: ..." / "A: ..." pattern (flashcards)
+        if let Some(q) = line.strip_prefix("Q:").or_else(|| line.strip_prefix("Q.")) {
+            let question = q.trim().to_string();
+            // Look for answer on next lines
+            for j in (i + 1)..lines.len().min(i + 4) {
+                let ans_line = lines[j].trim();
+                if let Some(a) = ans_line
+                    .strip_prefix("A:")
+                    .or_else(|| ans_line.strip_prefix("A."))
+                {
+                    items.push((
+                        item_type.to_string(),
+                        question.clone(),
+                        a.trim().to_string(),
+                    ));
+                    i = j + 1;
+                    break;
+                }
+            }
+        }
+
+        // Match numbered questions with **Answer:** pattern
+        if line.starts_with(|c: char| c.is_ascii_digit()) {
+            // Check for answer a few lines down
+            for j in (i + 1)..lines.len().min(i + 8) {
+                let ans_line = lines[j].trim().to_lowercase();
+                if ans_line.starts_with("**answer") || ans_line.starts_with("answer:") {
+                    let q_text = line
+                        .trim_start_matches(|c: char| {
+                            c.is_ascii_digit() || c == '.' || c == ')' || c == ' '
+                        })
+                        .to_string();
+                    let a_text = lines[j]
+                        .trim()
+                        .trim_start_matches("**")
+                        .trim_start_matches("Answer")
+                        .trim_start_matches("answer")
+                        .trim_start_matches("**")
+                        .trim_start_matches(':')
+                        .trim_start_matches("**")
+                        .trim()
+                        .trim_end_matches("**")
+                        .trim()
+                        .to_string();
+
+                    if !q_text.is_empty() && !a_text.is_empty() {
+                        items.push((item_type.to_string(), q_text, a_text));
+                    }
+                    i = j + 1;
+                    break;
+                }
+            }
+        }
+
+        i += 1;
+    }
+
+    items
+}
+
+/// Public wrapper for quiz module access
+pub fn get_document_context_pub(topic: &str) -> Result<String> {
+    get_document_context(topic)
 }
 
 /// Get document context for generation
@@ -441,16 +577,26 @@ fn get_document_context(topic: &str) -> Result<String> {
         return Ok(String::new());
     }
 
+    // Dynamic context sizing based on model
+    let config = Config::load()?;
+    let max_context_chars = if let Some(key) = config.get_api_key() {
+        let client = GroqClient::new(key, config.default_model);
+        client
+            .available_context_chars(500, 0, 8192)
+            .clamp(2000, 30000)
+    } else {
+        10000
+    };
+
     let mut context = String::new();
     let mut total_chars = 0;
-    const MAX_CONTEXT_CHARS: usize = 10000; // More context for generation
 
     for doc in documents.iter().take(10) {
-        if total_chars >= MAX_CONTEXT_CHARS {
+        if total_chars >= max_context_chars {
             break;
         }
 
-        let remaining = MAX_CONTEXT_CHARS - total_chars;
+        let remaining = max_context_chars - total_chars;
         let content = if doc.content.len() > remaining {
             &doc.content[..remaining]
         } else {
@@ -490,9 +636,19 @@ fn build_semantic_context(
 
     let similar = embeddings::find_similar(&query_embedding, &chunk_embeddings, 10);
 
+    // Dynamic context sizing
+    let config = Config::load()?;
+    let max_context_chars = if let Some(key) = config.get_api_key() {
+        let client = GroqClient::new(key, config.default_model);
+        client
+            .available_context_chars(500, 0, 8192)
+            .clamp(2000, 30000)
+    } else {
+        10000
+    };
+
     let mut context = String::new();
     let mut total_chars = 0;
-    const MAX_CONTEXT_CHARS: usize = 10000;
 
     let similar_ids: Vec<i64> = similar.iter().map(|(id, _)| *id).collect();
 
@@ -501,7 +657,7 @@ fn build_semantic_context(
             continue;
         }
 
-        if total_chars >= MAX_CONTEXT_CHARS {
+        if total_chars >= max_context_chars {
             break;
         }
 
@@ -533,7 +689,7 @@ fn get_save_path(filename: &str) -> Result<PathBuf> {
 
 /// Ingest generated content into the library
 fn ingest_generated_content(
-    path: &PathBuf,
+    path: &std::path::Path,
     filename: &str,
     content_type: &str,
     content: &str,
@@ -553,7 +709,10 @@ fn ingest_generated_content(
     }
 
     // Insert document with a special tag
-    let doc_type = format!("generated-{}", content_type.to_lowercase().replace(' ', "-"));
+    let doc_type = format!(
+        "generated-{}",
+        content_type.to_lowercase().replace(' ', "-")
+    );
     let doc_id = doc_store.insert(
         &source_path,
         filename,

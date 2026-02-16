@@ -39,8 +39,7 @@ pub async fn run() -> Result<()> {
     ];
 
     loop {
-        let selection =
-            Select::new("What would you like to configure?", options.clone()).prompt();
+        let selection = Select::new("What would you like to configure?", options.clone()).prompt();
 
         let selection = match selection {
             Ok(s) => s,
@@ -51,17 +50,17 @@ pub async fn run() -> Result<()> {
 
         match selection {
             s if s.contains("Set API Key") => {
-                if let Err(e) = set_api_key(&mut config).await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = set_api_key(&mut config).await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("Select Model") => {
-                if let Err(e) = select_model(&mut config).await {
-                    if !e.to_string().contains("cancelled") {
-                        eprintln!("{} {}", "Error:".red(), e);
-                    }
+                if let Err(e) = select_model(&mut config).await
+                    && !e.to_string().contains("cancelled")
+                {
+                    eprintln!("{} {}", "Error:".red(), e);
                 }
             }
             s if s.contains("View Settings") => {
@@ -104,7 +103,7 @@ async fn set_api_key(config: &mut Config) -> Result<()> {
 async fn select_model(config: &mut Config) -> Result<()> {
     let model_options: Vec<String> = GroqClient::MODELS
         .iter()
-        .map(|(id, desc)| format!("{} - {}", id, desc))
+        .map(|(id, desc, _ctx)| format!("{} - {}", id, desc))
         .collect();
 
     let selection = Select::new("Select default model:", model_options).prompt()?;

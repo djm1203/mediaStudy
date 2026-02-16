@@ -13,10 +13,20 @@ pub struct Config {
 impl Config {
     /// Get the config directory path
     pub fn config_dir() -> Result<PathBuf> {
-        let dir = dirs::config_dir()
-            .context("Could not determine config directory")?
-            .join("media-study");
-        Ok(dir)
+        let base = dirs::config_dir().context("Could not determine config directory")?;
+        let new_dir = base.join("librarian");
+        let old_dir = base.join("media-study");
+
+        // Migrate from old path if needed
+        if !new_dir.exists()
+            && old_dir.exists()
+            && let Err(e) = std::fs::rename(&old_dir, &new_dir)
+        {
+            eprintln!("Note: Could not migrate config from {:?}: {}", old_dir, e);
+            return Ok(old_dir);
+        }
+
+        Ok(new_dir)
     }
 
     /// Get the config file path
@@ -26,10 +36,20 @@ impl Config {
 
     /// Get the data directory path
     pub fn data_dir() -> Result<PathBuf> {
-        let dir = dirs::data_dir()
-            .context("Could not determine data directory")?
-            .join("media-study");
-        Ok(dir)
+        let base = dirs::data_dir().context("Could not determine data directory")?;
+        let new_dir = base.join("librarian");
+        let old_dir = base.join("media-study");
+
+        // Migrate from old path if needed
+        if !new_dir.exists()
+            && old_dir.exists()
+            && let Err(e) = std::fs::rename(&old_dir, &new_dir)
+        {
+            eprintln!("Note: Could not migrate data from {:?}: {}", old_dir, e);
+            return Ok(old_dir);
+        }
+
+        Ok(new_dir)
     }
 
     /// Load config from file, or return default if not found
