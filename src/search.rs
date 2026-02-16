@@ -2,6 +2,18 @@ use std::collections::HashSet;
 
 /// Filler words/phrases to strip from queries for better embedding search
 const FILLER_PREFIXES: &[&str] = &[
+    "can you give me the answer for",
+    "can you give me the answer to",
+    "can you give me",
+    "can you help me with",
+    "can you explain",
+    "could you explain",
+    "could you help me with",
+    "i need help with",
+    "i need to understand",
+    "i want to know about",
+    "please help me with",
+    "please explain",
     "what is the",
     "what are the",
     "what is",
@@ -10,8 +22,6 @@ const FILLER_PREFIXES: &[&str] = &[
     "how does",
     "how do",
     "how is",
-    "can you explain",
-    "please explain",
     "explain the",
     "explain",
     "tell me about",
@@ -26,23 +36,106 @@ const FILLER_PREFIXES: &[&str] = &[
     "when is",
     "where does",
     "where is",
+    "give me the answer for",
+    "give me the answer to",
+    "give me",
 ];
 
-/// Enhance a raw query by stripping filler words for better embedding search
+/// Enhance a raw query by stripping filler words for better embedding search.
+/// Also extracts specific references (chapter numbers, exercise numbers, page numbers)
+/// and includes them as separate search terms.
 pub fn enhance_query(raw: &str) -> String {
     let trimmed = raw.trim().trim_end_matches('?').trim();
     let lower = trimmed.to_lowercase();
 
+    // Strip filler prefixes
+    let mut cleaned = trimmed.to_string();
     for prefix in FILLER_PREFIXES {
         if lower.starts_with(prefix) {
-            let rest = &trimmed[prefix.len()..].trim_start();
+            let rest = trimmed[prefix.len()..].trim_start();
             if !rest.is_empty() {
-                return rest.to_string();
+                cleaned = rest.to_string();
+                break;
             }
         }
     }
 
-    trimmed.to_string()
+    // Strip trailing filler phrases (only from the end of the query)
+    let trailing_filler = [
+        "and all its sub questions",
+        "and all sub questions",
+        "and its sub questions",
+        "and sub questions",
+        "and all the sub questions",
+    ];
+    let cleaned_lower = cleaned.to_lowercase();
+    for suffix in &trailing_filler {
+        if cleaned_lower.ends_with(suffix) {
+            cleaned = cleaned[..cleaned.len() - suffix.len()].trim().to_string();
+        }
+    }
+
+    // Strip "specifically" only when it's filler (not followed by useful content)
+    let cleaned_lower = cleaned.to_lowercase();
+    if let Some(pos) = cleaned_lower.find(" specifically") {
+        let after = cleaned[pos + " specifically".len()..].trim();
+        if after.is_empty() {
+            cleaned = cleaned[..pos].trim().to_string();
+        } else {
+            // "specifically" is followed by useful content — just remove the word itself
+            cleaned = format!("{} {}", cleaned[..pos].trim(), after);
+        }
+    }
+
+    // Extract specific references (numbers, exercise/chapter/section/page references)
+    // These are critical for keyword search
+    let specific_refs = extract_references(&cleaned);
+
+    // If we found specific references, append them to help keyword search
+    if !specific_refs.is_empty() {
+        format!("{} {}", cleaned, specific_refs.join(" "))
+    } else {
+        cleaned
+    }
+}
+
+/// Extract specific references like exercise numbers, chapter numbers, page numbers
+fn extract_references(query: &str) -> Vec<String> {
+    let mut refs = Vec::new();
+    let lower = query.to_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+
+    for (i, word) in words.iter().enumerate() {
+        // Look for patterns like "exercise 0.3", "chapter 0", "page 26", "section 1.2"
+        let is_ref_keyword = matches!(
+            *word,
+            "exercise"
+                | "exercises"
+                | "chapter"
+                | "section"
+                | "page"
+                | "problem"
+                | "problems"
+                | "question"
+                | "questions"
+                | "figure"
+                | "theorem"
+                | "definition"
+                | "example"
+                | "lemma"
+                | "corollary"
+                | "proposition"
+        );
+
+        if is_ref_keyword
+            && let Some(next) = words.get(i + 1)
+            && next.chars().any(|c| c.is_ascii_digit())
+        {
+            refs.push(next.to_string());
+        }
+    }
+
+    refs
 }
 
 /// Check if two text chunks have significant word-level overlap (Jaccard similarity)
@@ -112,6 +205,22 @@ mod tests {
             "mitochondria function"
         );
         assert_eq!(enhance_query("DNA replication"), "DNA replication");
+    }
+
+    #[test]
+    fn test_enhance_query_exercise_references() {
+        let result = enhance_query(
+            "can you give me the answer for the chapter 0 exercises specifically 0.3?",
+        );
+        // Should contain the exercise number for keyword matching
+        assert!(result.contains("0.3"));
+        assert!(result.contains("chapter 0 exercises"));
+    }
+
+    #[test]
+    fn test_enhance_query_page_reference() {
+        let result = enhance_query("what is on page 26?");
+        assert!(result.contains("26"));
     }
 
     #[test]

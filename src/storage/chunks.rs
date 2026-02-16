@@ -147,6 +147,56 @@ impl<'a> ChunkStore<'a> {
         Ok(count)
     }
 
+    /// Search chunks by keyword (LIKE matching for hybrid search)
+    pub fn search_content(&self, query: &str, limit: usize) -> Result<Vec<StoredChunk>> {
+        // Split query into keywords and search for any match
+        let keywords: Vec<&str> = query.split_whitespace().filter(|w| w.len() >= 2).collect();
+
+        if keywords.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build a query that matches ANY keyword
+        let conditions: Vec<String> = keywords
+            .iter()
+            .map(|_| "content LIKE ?".to_string())
+            .collect();
+        let where_clause = conditions.join(" OR ");
+
+        let sql = format!(
+            "SELECT id, document_id, chunk_index, content, embedding
+             FROM chunks WHERE {} LIMIT ?",
+            where_clause
+        );
+
+        let mut stmt = self.db.conn.prepare(&sql)?;
+
+        // Bind parameters: each keyword as %keyword%, then limit
+        let mut param_idx = 1;
+        for kw in &keywords {
+            stmt.raw_bind_parameter(param_idx, format!("%{}%", kw))?;
+            param_idx += 1;
+        }
+        stmt.raw_bind_parameter(param_idx, limit as i64)?;
+
+        let mut chunks = Vec::new();
+        let mut rows = stmt.raw_query();
+        while let Some(row) = rows.next()? {
+            let embedding_bytes: Option<Vec<u8>> = row.get(4)?;
+            let embedding = embedding_bytes.map(|b| embeddings::bytes_to_embedding(&b));
+
+            chunks.push(StoredChunk {
+                id: row.get(0)?,
+                document_id: row.get(1)?,
+                chunk_index: row.get(2)?,
+                content: row.get(3)?,
+                embedding,
+            });
+        }
+
+        Ok(chunks)
+    }
+
     /// Count total chunks
     pub fn count(&self) -> Result<i64> {
         let count: i64 = self

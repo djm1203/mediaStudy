@@ -11,11 +11,12 @@ use crate::storage::{ChunkStore, ConversationStore, Database, DocumentStore};
 const GROUNDED_SYSTEM_PROMPT: &str = r#"You are The Librarian, a knowledgeable study assistant helping a student learn from their course materials.
 
 IMPORTANT INSTRUCTIONS:
-1. Answer questions using ONLY the provided context from their documents
-2. If the answer is not in the provided context, say "I don't have information about this in your materials"
-3. When you use information from the context, cite which document it came from
-4. Be concise but thorough in your explanations
-5. If asked to explain a concept, use examples from the provided materials when possible
+1. Answer questions primarily using the provided context from their documents
+2. When the context contains relevant information, use it as the foundation for your answer and cite the source
+3. If asked about exercises, problems, or questions from the materials, use the textbook knowledge in the context to reason through the answer — guide the student step by step
+4. You may use your general knowledge to supplement and explain concepts from the materials, but always prioritize what's in the provided context
+5. If the context has no relevant information at all, say so but still try to help using general knowledge, noting that you're going beyond their materials
+6. Be thorough in explanations — use examples from the materials when possible
 
 Format citations like: [Source: filename]"#;
 
@@ -310,48 +311,70 @@ fn pick_or_create_conversation(store: &ConversationStore) -> Result<i64> {
     }
 }
 
-/// Build context using semantic search (embeddings) with dynamic sizing and dedup
+/// Build context using hybrid search: semantic (embeddings) + keyword (LIKE) combined
 fn build_semantic_context(
     chunk_store: &ChunkStore,
     doc_store: &DocumentStore,
     query: &str,
     max_context_chars: usize,
 ) -> Result<String> {
-    // Generate query embedding
-    let query_embedding = match embeddings::embed_text(query) {
-        Ok(emb) => emb,
-        Err(_) => return build_fts_context(doc_store, query, max_context_chars),
-    };
-
-    // Get all chunks with embeddings
+    // Get all chunks with embeddings for semantic search
     let chunks = chunk_store.get_all_with_embeddings()?;
 
     if chunks.is_empty() {
         return build_fts_context(doc_store, query, max_context_chars);
     }
 
-    // Convert to format for similarity search
-    let chunk_embeddings: Vec<(i64, Vec<f32>)> = chunks
-        .iter()
-        .filter_map(|c| c.embedding.as_ref().map(|e| (c.id, e.clone())))
-        .collect();
+    // --- Semantic search: find top 10 similar chunks ---
+    let semantic_ids: Vec<i64> = match embeddings::embed_text(query) {
+        Ok(query_embedding) => {
+            let chunk_embeddings: Vec<(i64, Vec<f32>)> = chunks
+                .iter()
+                .filter_map(|c| c.embedding.as_ref().map(|e| (c.id, e.clone())))
+                .collect();
+            let similar = embeddings::find_similar(&query_embedding, &chunk_embeddings, 10);
+            similar.iter().map(|(id, _)| *id).collect()
+        }
+        Err(_) => Vec::new(),
+    };
 
-    // Find top 5 most similar chunks
-    let similar = embeddings::find_similar(&query_embedding, &chunk_embeddings, 5);
+    // --- Keyword search: find chunks containing query terms ---
+    let keyword_chunks = chunk_store.search_content(query, 10).unwrap_or_default();
+    let keyword_ids: Vec<i64> = keyword_chunks.iter().map(|c| c.id).collect();
 
-    if similar.is_empty() {
+    // --- Merge results: keyword hits first (more precise), then semantic ---
+    let mut seen = std::collections::HashSet::new();
+    let mut merged_ids: Vec<i64> = Vec::new();
+
+    // Keyword results are more precise for specific references (exercise 0.3, page 26, etc.)
+    for id in &keyword_ids {
+        if seen.insert(*id) {
+            merged_ids.push(*id);
+        }
+    }
+    // Then semantic results
+    for id in &semantic_ids {
+        if seen.insert(*id) {
+            merged_ids.push(*id);
+        }
+    }
+
+    if merged_ids.is_empty() {
         return build_fts_context(doc_store, query, max_context_chars);
     }
 
-    // Collect similar chunks for deduplication
-    let similar_ids: Vec<i64> = similar.iter().map(|(id, _)| *id).collect();
-    let matched_chunks: Vec<(i64, String)> = chunks
-        .iter()
-        .filter(|c| similar_ids.contains(&c.id))
-        .map(|c| (c.id, c.content.clone()))
-        .collect();
+    // Collect matched chunks for dedup — from both the loaded chunks and keyword results
+    let mut matched_chunks: Vec<(i64, String)> = Vec::new();
+    for id in &merged_ids {
+        // Try loaded chunks first
+        if let Some(c) = chunks.iter().find(|c| c.id == *id) {
+            matched_chunks.push((c.id, c.content.clone()));
+        } else if let Some(c) = keyword_chunks.iter().find(|c| c.id == *id) {
+            matched_chunks.push((c.id, c.content.clone()));
+        }
+    }
 
-    // Deduplicate chunks
+    // Deduplicate chunks with overlapping content
     let deduped = crate::search::deduplicate_chunks(matched_chunks);
 
     // Build context from deduped chunks
@@ -363,9 +386,11 @@ fn build_semantic_context(
             break;
         }
 
-        // Find original chunk for metadata
+        // Find original chunk for metadata — check both sources
         let chunk = chunks.iter().find(|c| c.id == *chunk_id);
+        let kw_chunk = keyword_chunks.iter().find(|c| c.id == *chunk_id);
         let (doc_id, chunk_idx) = chunk
+            .or(kw_chunk)
             .map(|c| (c.document_id, c.chunk_index))
             .unwrap_or((0, 0));
 
@@ -375,7 +400,7 @@ fn build_semantic_context(
             .unwrap_or_else(|| "Unknown".to_string());
 
         let remaining = max_context_chars - total_chars;
-        let truncated = truncate_content(content, remaining.min(1500));
+        let truncated = truncate_content(content, remaining.min(2000));
 
         context.push_str(&format!(
             "--- Document: {} (chunk {}) ---\n{}\n\n",
