@@ -26,12 +26,12 @@ fn get_model() -> Result<&'static Mutex<TextEmbedding>> {
 /// Generate embeddings for a list of texts
 pub fn embed_texts(texts: &[&str]) -> Result<Vec<Vec<f32>>> {
     let model = get_model()?;
-    let model = model
+    let mut model = model
         .lock()
         .map_err(|_| anyhow::anyhow!("Failed to lock embedding model"))?;
 
     let embeddings = model
-        .embed(texts.to_vec(), None)
+        .embed(texts, None)
         .context("Failed to generate embeddings")?;
 
     Ok(embeddings)

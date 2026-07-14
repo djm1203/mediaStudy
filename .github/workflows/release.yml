@@ -51,23 +51,23 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../media-study-${{ matrix.name }}.tar.gz media-study
+          tar czf ../../../librarian-${{ matrix.name }}.tar.gz librarian
           cd ../../..
 
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          7z a ../../../media-study-${{ matrix.name }}.zip media-study.exe
+          7z a ../../../librarian-${{ matrix.name }}.zip librarian.exe
           cd ../../..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: media-study-${{ matrix.name }}
+          name: librarian-${{ matrix.name }}
           path: |
-            media-study-*.tar.gz
-            media-study-*.zip
+            librarian-*.tar.gz
+            librarian-*.zip
 
   release:
     name: Create Release
@@ -85,7 +85,7 @@ jobs:
         run: find artifacts -type f
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/**/*.tar.gz
