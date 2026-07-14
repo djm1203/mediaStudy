@@ -7,7 +7,7 @@ use crate::llm::{GroqClient, groq::Message};
 use crate::storage::{Database, StudyStore};
 
 /// Question types parsed from quiz output
-enum QuizQuestion {
+pub enum QuizQuestion {
     MultipleChoice {
         question: String,
         options: Vec<(char, String)>,
@@ -371,7 +371,7 @@ async fn run_fresh_quiz(store: &StudyStore<'_>) -> Result<()> {
     Ok(())
 }
 
-fn parse_quiz_questions(text: &str) -> Vec<QuizQuestion> {
+pub fn parse_quiz_questions(text: &str) -> Vec<QuizQuestion> {
     let mut questions = Vec::new();
     let lines: Vec<&str> = text.lines().collect();
     let mut i = 0;

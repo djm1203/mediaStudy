@@ -211,6 +211,75 @@ impl GroqClient {
         Ok(full_response)
     }
 
+    /// Send a chat message with streaming response, forwarding each token over a
+    /// channel instead of printing to stdout. Mirrors [`chat_stream`]'s Groq SSE
+    /// parse loop but is safe to drive from inside the TUI (no terminal writes).
+    ///
+    /// Each `delta.content` fragment is sent as a raw `String` over `tx`; the
+    /// caller wraps it into whatever message type it needs. Returns the full
+    /// concatenated response. Send failures (receiver dropped) end the stream.
+    pub async fn chat_stream_tx(
+        &self,
+        messages: &[Message],
+        tx: tokio::sync::mpsc::UnboundedSender<String>,
+    ) -> Result<String> {
+        let request = ChatRequest {
+            model: self.model.clone(),
+            messages: messages.to_vec(),
+            temperature: Some(0.7),
+            max_tokens: Some(4096),
+            stream: true,
+        };
+
+        let response = self
+            .client
+            .post(GROQ_API_URL)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send request to Groq")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Groq API error ({}): {}", status, text);
+        }
+
+        let mut full_response = String::new();
+        let mut stream = response.bytes_stream();
+
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.context("Failed to read stream chunk")?;
+            let chunk_str = String::from_utf8_lossy(&chunk);
+
+            // SSE format: "data: {...}\n\n"
+            for line in chunk_str.lines() {
+                if let Some(data) = line.strip_prefix("data: ") {
+                    if data == "[DONE]" {
+                        break;
+                    }
+
+                    if let Ok(parsed) = serde_json::from_str::<StreamChunk>(data) {
+                        if let Some(choice) = parsed.choices.first() {
+                            if let Some(content) = &choice.delta.content {
+                                full_response.push_str(content);
+                                // Forward token to the caller. If the receiver is
+                                // gone, stop early and return what we have.
+                                if tx.send(content.clone()).is_err() {
+                                    return Ok(full_response);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(full_response)
+    }
+
     /// Simple single-turn query
     #[allow(dead_code)]
     pub async fn query(&self, prompt: &str) -> Result<String> {

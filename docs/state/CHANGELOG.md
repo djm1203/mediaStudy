@@ -12,6 +12,20 @@ author: Derek Martinez
 
 # Changelog
 
+## 2026-07-13 (E3 — ratatui TUI, branch `v1-foundation`)
+
+- **Phase 0 (committed):** scaffolded `src/tui/` — ratatui 0.30 + crossterm 0.29, panic-safe terminal
+  setup, async event/render loop, placeholder sidebar|content|status layout; `librarian` (no args)
+  launches it. Blueprint saved to `docs/design/TUI_ARCHITECTURE.md`.
+- **Phase 1 (green, verified):** the async core — `action`/`message` plumbing, `service`/`worker`
+  layers (all DB + embedding work in `spawn_blocking`), theme/keymap/event modules, full `App` state,
+  and a working **Chat** vertical slice: builds hybrid RAG context and streams the reply
+  token-by-token via a new `GroqClient::chat_stream_tx`, then persists the turn. Exposed the chat
+  context builders, generate prompts, and quiz parsers as `pub`. Home + Chat live; other screens are
+  placeholders. build/clippy `-D warnings`/fmt/15 tests all green.
+- Noted a doc/code drift for B-009: default chat model is `openai/gpt-oss-120b`, not the
+  `llama-3.3-70b-versatile` the README/docs claim.
+
 ## 2026-07-13 (v1.0 foundation — branch `v1-foundation`, uncommitted)
 
 - **E9 / B-024** — Modernized dependencies to latest majors: `thiserror 2`, `dirs 6`, `rusqlite 0.40`,

@@ -317,7 +317,7 @@ fn pick_or_create_conversation(store: &ConversationStore) -> Result<i64> {
 }
 
 /// Build context using hybrid search: semantic (embeddings) + keyword (LIKE) combined
-fn build_semantic_context(
+pub fn build_semantic_context(
     chunk_store: &ChunkStore,
     doc_store: &DocumentStore,
     query: &str,
@@ -419,7 +419,7 @@ fn build_semantic_context(
 }
 
 /// Build context using full-text search (fallback) with dynamic sizing
-fn build_fts_context(
+pub fn build_fts_context(
     store: &DocumentStore,
     query: &str,
     max_context_chars: usize,
@@ -466,7 +466,7 @@ fn build_fts_context(
 }
 
 /// Truncate content to a maximum length, trying to break at sentence boundaries
-fn truncate_content(content: &str, max_len: usize) -> String {
+pub fn truncate_content(content: &str, max_len: usize) -> String {
     if content.len() <= max_len {
         return content.to_string();
     }

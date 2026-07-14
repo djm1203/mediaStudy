@@ -14,7 +14,7 @@ use crate::llm::GroqClient;
 use crate::storage::{ChunkStore, Database, DocumentStore};
 
 /// Prompts for different generation types
-mod prompts {
+pub mod prompts {
     pub const STUDY_GUIDE: &str = r#"You are creating a comprehensive study guide from the provided course materials.
 
 Create a well-organized study guide that includes:
@@ -462,7 +462,7 @@ fn offer_save_study_items(content_type: &str, response: &str) -> Result<()> {
 
 /// Parse Q/A pairs from generated output
 #[allow(clippy::needless_range_loop)]
-fn parse_qa_pairs(content_type: &str, text: &str) -> Vec<(String, String, String)> {
+pub fn parse_qa_pairs(content_type: &str, text: &str) -> Vec<(String, String, String)> {
     let mut items = Vec::new();
     let item_type = if content_type == "Flashcards" {
         "flashcard"
