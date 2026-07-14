@@ -13,8 +13,11 @@ mod llm;
 mod render;
 mod search;
 mod storage;
+mod tui;
 
 /// ASCII art banner for the application
+// Legacy line-based UI — superseded by the ratatui TUI (`src/tui/`); removed at E3 Phase 3.
+#[allow(dead_code)]
 const BANNER: &str = r#"
     ╔════════════════════════════════════════════════════════╗
     ║                                                        ║
@@ -28,6 +31,7 @@ const BANNER: &str = r#"
 "#;
 
 /// Print the application banner
+#[allow(dead_code)]
 fn print_banner() {
     println!("{}", BANNER.cyan().bold());
 }
@@ -247,8 +251,8 @@ async fn main() -> Result<()> {
             generate(shell, &mut cmd, name, &mut io::stdout());
         }
         None => {
-            // No subcommand - show interactive menu
-            run_interactive().await?;
+            // No subcommand - launch the full-screen TUI
+            tui::run().await?;
         }
     }
 
@@ -256,6 +260,7 @@ async fn main() -> Result<()> {
 }
 
 /// Display the library shelf with buckets as books
+#[allow(dead_code)]
 fn print_library_shelf() {
     let buckets = bucket::Bucket::list_all().unwrap_or_default();
     let current = bucket::get_current_bucket().ok().flatten().map(|b| b.name);
@@ -332,6 +337,7 @@ fn print_library_shelf() {
 }
 
 /// Print the status dashboard
+#[allow(dead_code)]
 fn print_dashboard() {
     // Get bucket info
     let current_bucket = bucket::get_current_bucket().ok().flatten();
@@ -400,6 +406,7 @@ fn print_dashboard() {
     println!();
 }
 
+#[allow(dead_code)]
 async fn run_interactive() -> Result<()> {
     use inquire::Select;
 
@@ -500,6 +507,7 @@ async fn run_interactive() -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn print_farewell() {
     println!();
     println!(
