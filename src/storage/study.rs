@@ -78,6 +78,7 @@ impl<'a> StudyStore<'a> {
     }
 
     /// Count items due for review
+    #[allow(dead_code)]
     pub fn count_due(&self) -> Result<i64> {
         let now = Utc::now().to_rfc3339();
         let count: i64 = self.db.conn.query_row(

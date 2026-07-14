@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use colored::Colorize;
-use inquire::{Select, Text};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -92,191 +91,34 @@ Guidelines:
 If the problem requires knowledge not in the materials, note what additional concepts might be needed."#;
 }
 
-pub async fn run() -> Result<()> {
-    println!();
-    println!(
-        "    {}",
-        "╭──────────────────────────────────────────────────────╮".magenta()
-    );
-    println!(
-        "    {}         {}         {}",
-        "│".magenta(),
-        "📝 THE LIBRARIAN'S STUDY TOOLS 📝".bold().white(),
-        "│".magenta()
-    );
-    println!(
-        "    {}    {}    {}",
-        "│".magenta(),
-        "Generate guides, flashcards, quizzes & more!".dimmed(),
-        "│".magenta()
-    );
-    println!(
-        "    {}",
-        "╰──────────────────────────────────────────────────────╯".magenta()
-    );
-    println!();
-
-    let options = vec![
-        "📚  Study Guide    │ Comprehensive topic overview",
-        "🃏  Flashcards     │ Q&A cards for memorization",
-        "📋  Practice Quiz  │ Test your knowledge",
-        "📝  Summary        │ Quick topic recap",
-        "✏️   Homework Help  │ Interactive problem solving",
-        "←   Back",
-    ];
-
-    let selection = Select::new("What would you like to generate?", options).prompt()?;
-
-    match selection {
-        s if s.contains("Study Guide") => study_guide(None).await?,
-        s if s.contains("Flashcards") => flashcards(None).await?,
-        s if s.contains("Practice Quiz") => quiz(None).await?,
-        s if s.contains("Summary") => summary(None).await?,
-        s if s.contains("Homework Help") => homework_help().await?,
-        s if s.contains("Back") => {}
-        _ => {}
-    }
-
-    Ok(())
-}
-
-/// Generate a study guide
+/// Generate a study guide (headless). An empty topic uses all materials.
 pub async fn study_guide(topic: Option<String>) -> Result<()> {
-    let topic = match topic {
-        Some(t) => t,
-        None => Text::new("Topic or focus area (or press Enter for all materials):")
-            .prompt()
-            .unwrap_or_default(),
-    };
-
-    generate_content("Study Guide", prompts::STUDY_GUIDE, &topic).await
+    generate_content(
+        "Study Guide",
+        prompts::STUDY_GUIDE,
+        &topic.unwrap_or_default(),
+    )
+    .await
 }
 
-/// Generate flashcards
+/// Generate flashcards (headless). An empty topic uses all materials.
 pub async fn flashcards(topic: Option<String>) -> Result<()> {
-    let topic = match topic {
-        Some(t) => t,
-        None => Text::new("Topic or focus area (or press Enter for all materials):")
-            .prompt()
-            .unwrap_or_default(),
-    };
-
-    generate_content("Flashcards", prompts::FLASHCARDS, &topic).await
+    generate_content(
+        "Flashcards",
+        prompts::FLASHCARDS,
+        &topic.unwrap_or_default(),
+    )
+    .await
 }
 
-/// Generate a quiz
+/// Generate a quiz (headless). An empty topic uses all materials.
 pub async fn quiz(topic: Option<String>) -> Result<()> {
-    let topic = match topic {
-        Some(t) => t,
-        None => Text::new("Topic or focus area (or press Enter for all materials):")
-            .prompt()
-            .unwrap_or_default(),
-    };
-
-    generate_content("Quiz", prompts::QUIZ, &topic).await
+    generate_content("Quiz", prompts::QUIZ, &topic.unwrap_or_default()).await
 }
 
-/// Generate a summary
+/// Generate a summary (headless). An empty topic uses all materials.
 pub async fn summary(topic: Option<String>) -> Result<()> {
-    let topic = match topic {
-        Some(t) => t,
-        None => Text::new("Topic or document to summarize (or press Enter for all):")
-            .prompt()
-            .unwrap_or_default(),
-    };
-
-    generate_content("Summary", prompts::SUMMARY, &topic).await
-}
-
-/// Interactive homework help
-pub async fn homework_help() -> Result<()> {
-    let config = Config::load()?;
-    let api_key = match config.get_api_key() {
-        Some(key) => key,
-        None => {
-            println!(
-                "{} No API key configured. Run {} to set up.",
-                "Error:".red().bold(),
-                "librarian config".cyan()
-            );
-            return Ok(());
-        }
-    };
-
-    let client = GroqClient::new(api_key, config.default_model);
-
-    // Get context
-    let context = get_document_context("")?;
-
-    if context.is_empty() {
-        println!(
-            "{} No documents in current bucket. Add materials first.",
-            "Error:".red()
-        );
-        return Ok(());
-    }
-
-    println!("{}", "Homework Help Mode".bold().cyan());
-    println!("{}", "─".repeat(40).dimmed());
-    println!("Type your homework question or problem.");
-    println!("Type {} to exit.\n", "done".dimmed());
-
-    let mut conversation = vec![crate::llm::groq::Message {
-        role: "system".to_string(),
-        content: prompts::HOMEWORK_HELP.to_string(),
-    }];
-
-    loop {
-        let input = Text::new("Problem:")
-            .with_help_message("Describe your homework problem")
-            .prompt()?;
-
-        let input = input.trim();
-
-        if input.eq_ignore_ascii_case("done") || input.eq_ignore_ascii_case("exit") {
-            println!("{}", "Good luck with your studies!".dimmed());
-            break;
-        }
-
-        if input.is_empty() {
-            continue;
-        }
-
-        // Add context and question
-        let user_message = format!(
-            "COURSE MATERIALS:\n{}\n\n---\n\nHOMEWORK PROBLEM: {}",
-            context, input
-        );
-
-        conversation.push(crate::llm::groq::Message {
-            role: "user".to_string(),
-            content: user_message,
-        });
-
-        print!("{} ", "Tutor:".magenta().bold());
-        std::io::Write::flush(&mut std::io::stdout()).ok();
-
-        match client.chat_stream(&conversation).await {
-            Ok(response) => {
-                println!(); // Extra newline after streaming
-
-                // Store simplified version for history
-                if let Some(last_msg) = conversation.last_mut() {
-                    last_msg.content = input.to_string();
-                }
-                conversation.push(crate::llm::groq::Message {
-                    role: "assistant".to_string(),
-                    content: response,
-                });
-            }
-            Err(e) => {
-                println!("\n{} {}\n", "Error:".red(), e);
-                conversation.pop();
-            }
-        }
-    }
-
-    Ok(())
+    generate_content("Summary", prompts::SUMMARY, &topic.unwrap_or_default()).await
 }
 
 /// Core generation function
@@ -359,54 +201,31 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
             crate::render::render_markdown(&response);
             println!("{}", "─".repeat(50).dimmed());
 
-            // Offer to save
-            let save_options = vec![
-                "📚  Save & add to library  │ Save file and make it searchable",
-                "💾  Save file only         │ Just save to disk",
-                "❌  Don't save             │ Discard output",
-            ];
-            let save = Select::new("What would you like to do?", save_options).prompt()?;
+            // Auto-save to the bucket's generated/ folder and add to the library.
+            let filename = format!(
+                "{}-{}.md",
+                name.to_lowercase().replace(' ', "-"),
+                chrono::Local::now().format("%Y%m%d-%H%M")
+            );
+            let save_path = get_save_path(&filename)?;
 
-            if save.contains("Don't save") {
-                println!("{}", "Output not saved.".dimmed());
-            } else {
-                // Generate default filename
-                let default_name = format!(
-                    "{}-{}.md",
-                    name.to_lowercase().replace(' ', "-"),
-                    chrono::Local::now().format("%Y%m%d-%H%M")
-                );
-
-                let filename = Text::new("Filename:")
-                    .with_default(&default_name)
-                    .prompt()?;
-
-                // Determine save path
-                let save_path = get_save_path(&filename)?;
-
-                // Ensure directory exists
-                if let Some(parent) = save_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-
-                // Save the file
-                std::fs::write(&save_path, &response)?;
-                println!(
-                    "{} Saved to {}",
-                    "✓".green(),
-                    save_path.display().to_string().cyan()
-                );
-
-                // If user wants to add to library, ingest it
-                if save.contains("add to library") {
-                    ingest_generated_content(&save_path, &filename, name, &response)?;
-                    println!("{} Added to your library - now searchable!", "✓".green());
-                }
+            if let Some(parent) = save_path.parent() {
+                std::fs::create_dir_all(parent)?;
             }
 
-            // Offer to save as study items for spaced repetition
+            std::fs::write(&save_path, &response)?;
+            println!(
+                "{} Saved to {}",
+                "✓".green(),
+                save_path.display().to_string().cyan()
+            );
+
+            ingest_generated_content(&save_path, &filename, name, &response)?;
+            println!("{} Added to your library - now searchable!", "✓".green());
+
+            // Auto-save flashcards/quiz as study items for spaced repetition.
             if name == "Flashcards" || name == "Quiz" {
-                offer_save_study_items(name, &response)?;
+                save_study_items(name, &response)?;
             }
         }
         Err(e) => {
@@ -417,45 +236,29 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
     Ok(())
 }
 
-/// Parse generated flashcards/quiz output into study items and offer to save
-fn offer_save_study_items(content_type: &str, response: &str) -> Result<()> {
+/// Parse generated flashcards/quiz output into study items and save them for
+/// spaced repetition (headless — no prompt).
+fn save_study_items(content_type: &str, response: &str) -> Result<()> {
     let items = parse_qa_pairs(content_type, response);
 
     if items.is_empty() {
         return Ok(());
     }
 
+    let db = Database::open()?;
+    let store = crate::storage::StudyStore::new(&db);
+
+    let bulk: Vec<(Option<i64>, &str, &str, &str)> = items
+        .iter()
+        .map(|(item_type, front, back)| (None, item_type.as_str(), front.as_str(), back.as_str()))
+        .collect();
+
+    let count = store.bulk_insert(&bulk)?;
     println!(
-        "\n📚 Found {} study items to save for spaced repetition.",
-        items.len().to_string().cyan()
+        "{} Saved {} study items for spaced repetition!",
+        "✓".green(),
+        count
     );
-
-    let opts = vec![
-        "💾  Save for spaced repetition │ Review these later",
-        "❌  Skip",
-    ];
-    let choice = Select::new("Save study items?", opts).prompt();
-
-    if let Ok(s) = choice {
-        if s.contains("Save") {
-            let db = Database::open()?;
-            let store = crate::storage::StudyStore::new(&db);
-
-            let bulk: Vec<(Option<i64>, &str, &str, &str)> = items
-                .iter()
-                .map(|(item_type, front, back)| {
-                    (None, item_type.as_str(), front.as_str(), back.as_str())
-                })
-                .collect();
-
-            let count = store.bulk_insert(&bulk)?;
-            println!(
-                "{} Saved {} items for spaced repetition!",
-                "✓".green(),
-                count
-            );
-        }
-    }
 
     Ok(())
 }

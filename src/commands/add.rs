@@ -1,17 +1,25 @@
 use anyhow::Result;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
-use inquire::{Select, Text};
 use std::path::Path;
 
 use crate::embeddings;
 use crate::ingest::{self, ChunkConfig, ContentType, chunk_text};
 use crate::storage::{ChunkStore, Database, DocumentStore};
 
+/// Add a source headlessly. A bare `add` (no path) opens the TUI Add pane, so
+/// this path always receives an explicit source.
 pub async fn run(path: Option<String>) -> Result<()> {
     let source = match path {
         Some(p) => p,
-        None => prompt_for_source()?,
+        None => {
+            println!(
+                "{} Provide a path or URL: {}",
+                "Note:".yellow(),
+                "librarian add <path|url>".cyan()
+            );
+            return Ok(());
+        }
     };
 
     println!("\n{} {}", "Processing:".dimmed(), source);
@@ -42,29 +50,6 @@ pub async fn run(path: Option<String>) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn prompt_for_source() -> Result<String> {
-    let options = vec!["File", "Directory", "URL/Website", "YouTube Video"];
-
-    let source_type = Select::new("What would you like to add?", options).prompt()?;
-
-    let (prompt_text, help_text) = match source_type {
-        "File" => ("Enter file path:", "You can use tab for path completion"),
-        "Directory" => (
-            "Enter directory path:",
-            "You can use tab for path completion",
-        ),
-        "URL/Website" => ("Enter URL:", "https://example.com/article"),
-        "YouTube Video" => ("Enter YouTube URL:", "https://youtube.com/watch?v=..."),
-        _ => unreachable!(),
-    };
-
-    let path = Text::new(prompt_text)
-        .with_help_message(help_text)
-        .prompt()?;
-
-    Ok(path)
 }
 
 fn content_type_str(ct: &ContentType) -> &'static str {

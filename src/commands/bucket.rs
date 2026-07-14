@@ -1,109 +1,28 @@
+//! Headless bucket (library) commands.
+//!
+//! Interactive library management moved to the ratatui TUI (sidebar + Home) at
+//! E3 Phase 3. These functions stay for scripting and never prompt: `create`
+//! auto-switches to the new bucket, and `delete` removes it directly.
+
 use anyhow::Result;
 use colored::Colorize;
-use inquire::{Select, Text};
 
 use crate::bucket::{self, Bucket};
 use crate::storage::{Database, DocumentStore};
 
-/// Interactive bucket management
-pub async fn run() -> Result<()> {
-    println!();
-    println!(
-        "    {}",
-        "╭──────────────────────────────────────────────────────╮".yellow()
-    );
-    println!(
-        "    {}          {}          {}",
-        "│".yellow(),
-        "📚 LIBRARY MANAGEMENT 📚".bold().white(),
-        "│".yellow()
-    );
-    println!(
-        "    {}     {}     {}",
-        "│".yellow(),
-        "Organize your knowledge into separate books".dimmed(),
-        "│".yellow()
-    );
-    println!(
-        "    {}",
-        "╰──────────────────────────────────────────────────────╯".yellow()
-    );
-    println!();
-
-    show_current_bucket();
-
-    let options = vec![
-        "📖  Create new book     │ Start a new study collection",
-        "🔄  Switch book         │ Change active collection",
-        "📋  List all books      │ See your library",
-        "🗑️   Delete book         │ Remove a collection",
-        "📭  Use no book         │ Switch to default storage",
-        "←   Back",
-    ];
-
-    loop {
-        let selection = Select::new("What would you like to do?", options.clone()).prompt();
-
-        let selection = match selection {
-            Ok(s) => s,
-            Err(inquire::InquireError::OperationCanceled)
-            | Err(inquire::InquireError::OperationInterrupted) => break,
-            Err(e) => return Err(e.into()),
-        };
-
-        match selection {
-            s if s.contains("Create new book") => {
-                if let Err(e) = create_bucket().await
-                    && !e.to_string().contains("cancelled")
-                {
-                    eprintln!("{} {}", "Error:".red(), e);
-                }
-            }
-            s if s.contains("Switch book") => {
-                if let Err(e) = switch_bucket().await
-                    && !e.to_string().contains("cancelled")
-                {
-                    eprintln!("{} {}", "Error:".red(), e);
-                }
-            }
-            s if s.contains("List all books") => {
-                if let Err(e) = list_buckets().await
-                    && !e.to_string().contains("cancelled")
-                {
-                    eprintln!("{} {}", "Error:".red(), e);
-                }
-            }
-            s if s.contains("Delete book") => {
-                if let Err(e) = delete_bucket().await
-                    && !e.to_string().contains("cancelled")
-                {
-                    eprintln!("{} {}", "Error:".red(), e);
-                }
-            }
-            s if s.contains("Use no book") => {
-                if let Err(e) = clear_bucket().await
-                    && !e.to_string().contains("cancelled")
-                {
-                    eprintln!("{} {}", "Error:".red(), e);
-                }
-            }
-            s if s.contains("Back") => break,
-            _ => {}
-        }
-
-        println!();
-    }
-
-    Ok(())
-}
-
-/// Create a new bucket
+/// Create a new bucket and switch to it. A bare `bucket create` (no name) opens
+/// the TUI instead, so this headless path always receives a name.
 pub async fn create(name: Option<String>) -> Result<()> {
     let name = match name {
         Some(n) => n,
-        None => Text::new("Bucket name:")
-            .with_help_message("e.g., os-class, physics-301, cs-foundations")
-            .prompt()?,
+        None => {
+            println!(
+                "{} Provide a name: {}",
+                "Note:".yellow(),
+                "librarian bucket create <name>".cyan()
+            );
+            return Ok(());
+        }
     };
 
     if name.trim().is_empty() {
@@ -115,17 +34,9 @@ pub async fn create(name: Option<String>) -> Result<()> {
         Ok(bucket) => {
             println!("{} Created bucket '{}'", "✓".green(), bucket.name);
 
-            // Ask if they want to switch to it
-            let switch = Select::new(
-                "Switch to this bucket now?",
-                vec!["Yes (Recommended)", "No"],
-            )
-            .prompt()?;
-
-            if switch.starts_with("Yes") {
-                bucket::set_current_bucket(Some(&bucket.name))?;
-                println!("{} Now using bucket '{}'", "✓".green(), bucket.name);
-            }
+            // Auto-switch to the newly created bucket.
+            bucket::set_current_bucket(Some(&bucket.name))?;
+            println!("{} Now using bucket '{}'", "✓".green(), bucket.name);
         }
         Err(e) => {
             println!("{} {}", "✗".red(), e);
@@ -174,19 +85,18 @@ pub async fn list() -> Result<()> {
     Ok(())
 }
 
-/// Switch to a different bucket
+/// Switch to a different bucket. A bare `bucket use` (no name) opens the TUI, so
+/// this headless path always receives a name.
 pub async fn switch(name: Option<String>) -> Result<()> {
     let name = match name {
         Some(n) => n,
         None => {
-            let buckets = Bucket::list_all()?;
-
-            if buckets.is_empty() {
-                println!("{}", "No buckets found. Create one first.".dimmed());
-                return Ok(());
-            }
-
-            Select::new("Select bucket:", buckets).prompt()?
+            println!(
+                "{} Provide a name: {}",
+                "Note:".yellow(),
+                "librarian bucket use <name>".cyan()
+            );
+            return Ok(());
         }
     };
 
@@ -201,79 +111,48 @@ pub async fn switch(name: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// Delete a bucket
-async fn delete_bucket() -> Result<()> {
-    let buckets = Bucket::list_all()?;
+/// Delete a bucket and all its documents (headless). The caller passed an
+/// explicit name, so the deletion happens directly without a confirmation
+/// prompt.
+pub async fn delete(name: Option<String>) -> Result<()> {
+    let name = match name {
+        Some(n) => n,
+        None => {
+            println!(
+                "{} Provide a name: {}",
+                "Note:".yellow(),
+                "librarian bucket delete <name>".cyan()
+            );
+            return Ok(());
+        }
+    };
 
-    if buckets.is_empty() {
-        println!("{}", "No buckets to delete.".dimmed());
+    if !Bucket::exists(&name)? {
+        println!("{} Bucket '{}' does not exist", "✗".red(), name);
         return Ok(());
     }
 
-    let name = Select::new("Select bucket to delete:", buckets).prompt()?;
-
-    // Show document count
+    // Document count (for the confirmation message).
     let bucket = Bucket::open(&name)?;
     let db = Database::open_for_bucket(&bucket)?;
     let store = DocumentStore::new(&db);
     let count = store.count()?;
 
+    // Clear current bucket if this was it.
+    let current = bucket::get_current_bucket()?;
+    if current.as_ref().map(|b| b.name.as_str()) == Some(&name) {
+        bucket::set_current_bucket(None)?;
+    }
+
+    Bucket::delete(&name)?;
     println!(
-        "\n{} This bucket contains {} documents.",
-        "Warning:".yellow().bold(),
+        "{} Deleted bucket '{}' ({} documents)",
+        "✓".green(),
+        name,
         count
     );
 
-    let confirm = Select::new(
-        &format!("Delete bucket '{}' and all its documents?", name),
-        vec!["No", "Yes, delete it"],
-    )
-    .prompt()?;
-
-    if confirm == "Yes, delete it" {
-        // Clear current bucket if this was it
-        let current = bucket::get_current_bucket()?;
-        if current.as_ref().map(|b| b.name.as_str()) == Some(&name) {
-            bucket::set_current_bucket(None)?;
-        }
-
-        Bucket::delete(&name)?;
-        println!("{} Deleted bucket '{}'", "✓".green(), name);
-    } else {
-        println!("{}", "Cancelled.".dimmed());
-    }
-
     Ok(())
-}
-
-async fn create_bucket() -> Result<()> {
-    create(None).await
-}
-
-async fn switch_bucket() -> Result<()> {
-    switch(None).await
-}
-
-async fn list_buckets() -> Result<()> {
-    list().await
-}
-
-async fn clear_bucket() -> Result<()> {
-    bucket::set_current_bucket(None)?;
-    println!("{} Now using default (no bucket)", "✓".green());
-    Ok(())
-}
-
-fn show_current_bucket() {
-    match bucket::get_current_bucket() {
-        Ok(Some(bucket)) => {
-            println!("Current bucket: {}\n", bucket.name.cyan().bold());
-        }
-        Ok(None) => {
-            println!("Current bucket: {}\n", "(none - using default)".dimmed());
-        }
-        Err(_) => {}
-    }
 }
 
 /// Show current bucket status (for use in other commands)

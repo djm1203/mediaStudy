@@ -14,6 +14,7 @@ pub struct Conversation {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StoredMessage {
     #[allow(dead_code)]
     pub id: i64,
@@ -71,6 +72,7 @@ impl<'a> ConversationStore<'a> {
     }
 
     /// Get all messages for a conversation
+    #[allow(dead_code)]
     pub fn get_messages(&self, conversation_id: i64) -> Result<Vec<StoredMessage>> {
         let mut stmt = self.db.conn.prepare(
             "SELECT id, conversation_id, role, content, created_at

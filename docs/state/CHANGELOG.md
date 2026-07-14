@@ -34,6 +34,14 @@ author: Derek Martinez
   edits were needed; integrated build/clippy `-D warnings`/fmt/15 tests all green. The full TUI
   (9 screens) is now functional. Remaining: Phase 3 — route arg-less subcommands into the TUI and
   remove `inquire` + the legacy line-based menu.
+- **Phase 3 (green, verified) — E3 COMPLETE:** made the TUI the primary interface. Arg-less
+  subcommands (`chat`, `docs`, `config`, `review`, `quiz`, bare `add`/`search`/`delete`/`bucket`/
+  `generate`) open the TUI on the right screen; arg-provided paths stay fully headless and
+  non-interactive (removed the `inquire` confirm/save/switch prompts). Deleted the legacy line-based
+  menu (`run_interactive`, banner/dashboard helpers) and the interactive command entry points;
+  `src/commands/{config,review}.rs` removed (the TUI panes replace them). Removed the `inquire`
+  dependency entirely (`grep inquire src/ Cargo.toml` empty). build/clippy `-D warnings`/fmt/15 tests
+  all green; headless CLI verified non-blocking.
 
 ## 2026-07-13 (v1.0 foundation — branch `v1-foundation`, uncommitted)
 

@@ -7,6 +7,7 @@ use super::Database;
 #[derive(Debug, Clone)]
 pub struct Document {
     pub id: i64,
+    #[allow(dead_code)]
     pub source_path: String,
     pub filename: String,
     pub content_type: String,
