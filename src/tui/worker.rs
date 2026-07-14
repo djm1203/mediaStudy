@@ -131,12 +131,15 @@ async fn run(action: Action, msg_tx: &UnboundedSender<Message>) {
             Ok(msg) => send(msg_tx, msg),
             Err(e) => toast_err(msg_tx, format!("Failed to load config: {e}")),
         },
-        Action::SaveConfig { api_key, model } => {
-            match service::config::save_config(api_key, model).await {
-                Ok(msg) => send(msg_tx, msg),
-                Err(e) => toast_err(msg_tx, format!("Failed to save config: {e}")),
-            }
-        }
+        Action::SaveConfig {
+            provider,
+            api_key,
+            model,
+            ollama_url,
+        } => match service::config::save_config(provider, api_key, model, ollama_url).await {
+            Ok(msg) => send(msg_tx, msg),
+            Err(e) => toast_err(msg_tx, format!("Failed to save config: {e}")),
+        },
     }
 }
 

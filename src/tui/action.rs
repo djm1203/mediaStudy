@@ -75,14 +75,25 @@ pub struct StudyCard {
 }
 
 /// Current configuration snapshot for the Config pane.
+///
+/// Provider-aware (E2-core): the pane derives its model list from
+/// `provider::suggested_models(kind)` itself, so only the *active* selections
+/// and the per-provider key-set flags travel here.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct ConfigData {
-    pub has_api_key: bool,
-    /// The currently selected default model id.
+    /// Currently selected provider id (`"groq"`/`"openai"`/`"anthropic"`/`"ollama"`).
+    pub provider: String,
+    /// The resolved default model id (field value or the provider default).
     pub model: String,
-    /// Selectable models as `(id, description)` from `GroqClient::MODELS`.
-    pub models: Vec<(String, String)>,
+    /// The Ollama server root (config value or the built-in default).
+    pub ollama_url: String,
+    /// Whether a usable Groq credential exists (config field or env var).
+    pub groq_key_set: bool,
+    /// Whether a usable OpenAI credential exists (config field or env var).
+    pub openai_key_set: bool,
+    /// Whether a usable Anthropic credential exists (config field or env var).
+    pub anthropic_key_set: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -182,13 +193,20 @@ pub enum Action {
 
     // ---- config ----
     /// Load the current configuration snapshot.
-    /// → [`Message::ConfigLoaded`]. Calls `Config::load`, `GroqClient::MODELS`.
+    /// → [`Message::ConfigLoaded`]. Calls `Config::load` +
+    /// `provider::suggested_models`.
     LoadConfig,
-    /// Persist configuration changes (API key and/or default model).
-    /// → [`Message::ConfigSaved`]. Calls `Config::save`.
+    /// Persist configuration changes for the given provider.
+    ///
+    /// `provider` names the active provider (also selects which `*_api_key`
+    /// field a `Some(api_key)` is written into; Ollama has no key field). `model`
+    /// overwrites `default_model` when `Some`; `ollama_url` overwrites the Ollama
+    /// server root when `Some`. → [`Message::ConfigSaved`]. Calls `Config::save`.
     SaveConfig {
+        provider: String,
         api_key: Option<String>,
         model: Option<String>,
+        ollama_url: Option<String>,
     },
 }
 

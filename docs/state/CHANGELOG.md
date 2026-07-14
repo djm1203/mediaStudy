@@ -12,6 +12,21 @@ author: Derek Martinez
 
 # Changelog
 
+## 2026-07-13 (E2 — pluggable providers, branch `v1-foundation`) — E2 COMPLETE
+
+- **E2-core (committed):** enum-dispatched `Provider` abstraction (`src/llm/provider.rs`) — one
+  OpenAI-compatible client serves Groq/OpenAI/Ollama, plus an Anthropic Messages-API client, behind
+  `chat()`/`chat_stream()`. Retry/backoff + timeouts + clear per-provider errors (B-005). `Config`
+  gains `provider`/`openai_api_key`/`anthropic_api_key`/`ollama_url` + `resolve_provider()`/
+  `resolve_transcriber()` (Groq/OpenAI Whisper). All LLM call sites + transcription routed through
+  the resolved provider. Backward compatible: old configs + `GROQ_API_KEY` work, Groq stays default.
+- **E2 Config pane (green, verified):** the TUI Config pane now selects provider (Groq/OpenAI/
+  Anthropic/Ollama), edits the per-provider key (or the Ollama URL), and picks a model from that
+  provider's suggested list (or a custom id). `ConfigData`/`SaveConfig` extended accordingly; save
+  refreshes Home/sidebar. build/clippy `-D warnings`/fmt/15 tests green.
+- Not done in E2: per-bucket provider override (global only); `reqwest 0.13` (B-025, deferred —
+  changes TLS backend/build deps).
+
 ## 2026-07-13 (E3 — ratatui TUI, branch `v1-foundation`)
 
 - **Phase 0 (committed):** scaffolded `src/tui/` — ratatui 0.30 + crossterm 0.29, panic-safe terminal
