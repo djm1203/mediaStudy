@@ -1,0 +1,51 @@
+---
+title: "CHANGELOG"
+project: project
+classification: high
+created: 2026-06-06T03:40:25Z
+updated: 2026-07-13T00:00:00Z
+product_id: project
+project_id: project
+file_kind: Changelog
+author: Derek Martinez
+---
+
+# Changelog
+
+## 2026-07-13 (v1.0 foundation — branch `v1-foundation`, uncommitted)
+
+- **E9 / B-024** — Modernized dependencies to latest majors: `thiserror 2`, `dirs 6`, `rusqlite 0.40`,
+  `colored 3`, `toml 1`, `pdf-extract 0.12`, `lopdf 0.44`, `indicatif 0.18`, `fastembed 5`,
+  `termimad 0.35`, `scraper 0.27`, `html2text 0.17`. Only breakage was `fastembed 5` (2-line fix in
+  `src/embeddings/mod.rs`: `&mut` model borrow + drop redundant `to_vec`). Build + clippy `-D warnings`
+  + `cargo fmt --check` clean; 15/15 tests pass. `reqwest 0.13` deferred to B-025 (changes default TLS
+  to rustls/aws-lc → new cmake/nasm build deps; belongs with the E2 provider rework). `inquire` left at
+  0.7 (removed by E3). Embedding model unchanged (`AllMiniLML6V2`) so stored 384-dim vectors stay valid.
+- **E7 / B-003** — Fixed `release.yml`: packaged binary/archive renamed `media-study` → `librarian`;
+  bumped `softprops/action-gh-release@v1 → v2`.
+- **E6 / B-004** — Added a `cargo audit` security job to CI (`.github/workflows/ci.yml`).
+
+## 2026-07-13 (later — assessment & v1.0 roadmap)
+
+- Verified doc claims against source and corrected four inaccuracies across the doc set: FTS5 is
+  real (`documents_fts`) so the README is accurate — only the chunk keyword arm uses `LIKE`; test
+  coverage is 5 files / 15 tests (not just `search.rs`); default Whisper model is
+  `whisper-large-v3-turbo`; the active app dir is `librarian` (legacy `media-study` auto-migrated).
+- Assessed the project and defined a production-readiness roadmap: 9 epics, with v1.0 = E1 (RAG
+  quality/citations), E2 (pluggable providers), E3 (ratatui TUI), E6 (tests), E7 (release), E9
+  (dependency modernization). Recorded product decisions D-7 (stay local-first CLI), D-8 (pluggable
+  providers), D-9 (ratatui TUI). Rewrote `BACKLOG.md` and `EXECUTION_PLAN.md` around the epics.
+- Next epic to execute: **E3** (full-screen ratatui TUI), autonomous + parallel agents.
+
+## 2026-07-13
+
+- Populated BEACON governance docs (state, architecture, product, standards, operations,
+  compliance, planning) to reflect The Librarian's actual architecture and current state.
+- Note: prior feature work (hybrid search, ingestion optimization, chat, local embeddings,
+  per-bucket SQLite storage, study-material generation) predates BEACON onboarding and lives
+  in git history (commits: "chat update", "added hybrid searching", "optimizing the ingestion",
+  "readme update", "final changes").
+
+## 2026-06-06T03:40:25Z
+
+- Project scaffolded and migrated to BEACON Framework

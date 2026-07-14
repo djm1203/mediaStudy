@@ -19,7 +19,7 @@ A CLI tool that ingests various media (PDFs, videos, notes, articles) into isola
 - [x] CLI with clap (subcommands: add, chat, config)
 - [x] Interactive prompts with inquire (no flags needed)
 - [x] Groq API client (chat completions)
-- [x] Config management (~/.config/media-study/)
+- [x] Config management (~/.config/librarian/, migrated automatically from the legacy media-study directory)
 - [x] PDF text extraction (pdf-extract)
 - [x] Text/Markdown file reading
 - [x] Basic chat loop (conversation history in memory)
@@ -105,6 +105,35 @@ A CLI tool that ingests various media (PDFs, videos, notes, articles) into isola
 
 ---
 
+## Next up — Phase 1: Quality (BEACON, 2026-07-13)
+> Immediate, actionable steps. Tied to `docs/planning/BACKLOG.md` and `EXECUTION_PLAN.md`.
+
+**B-001 — Promote chunk keyword arm to FTS5 (MEDIUM)**
+- [ ] Add an FTS5 virtual table (`chunks_fts`) mirroring `chunks.content` (document-level search already uses `documents_fts`); keep it in sync on insert/delete (triggers or explicit writes in `src/storage/chunks.rs`)
+- [ ] Rewrite `search_content` to query FTS5 with `MATCH` instead of `content LIKE ?`
+- [ ] Handle existing local DBs: build the FTS index for already-ingested chunks (one-time backfill)
+
+**B-002 — Expand automated test coverage (HIGH)**
+> Baseline: 15 tests already cover pure functions in `search.rs`, `ingest/chunker.rs`, `ingest/ocr.rs`, `ingest/url.rs`, and `storage/study.rs` (SM-2 scheduler). Untested: ingest I/O, storage CRUD, embeddings, LLM/Whisper clients, command handlers.
+- [ ] storage/chunks: insert, `get_all_with_embeddings`, `search_content`, delete/count (in-memory SQLite)
+- [ ] embeddings: `embedding_to_bytes` / `bytes_to_embedding` round-trip; vector dimension = 384
+- [ ] retrieval: hybrid scoring, Jaccard dedup, query enhancement (extend `src/search.rs` tests)
+- [ ] ingest: chunking boundaries (1000-char chunk, 200-char overlap) and a small txt/md fixture
+
+**B-003 — Fix the release pipeline (HIGH)**
+- [ ] In `.github/workflows/release.yml`, replace `media-study` / `media-study.exe` with `librarian` / `librarian.exe` in the package/tar/7z/upload steps
+- [ ] Rename produced archives (e.g. `librarian-<name>.tar.gz` / `.zip`)
+- [ ] Dry-run via `workflow_dispatch` and confirm archives contain the real binary
+
+**B-004 — Add `cargo audit` to CI**
+- [ ] Add a CI job that runs `cargo audit` (install `cargo-audit` or use an action)
+- [ ] Triage any advisories; decide fail-vs-warn policy for the pipeline
+
+**B-009 — Keep docs in sync**
+- [ ] Re-check README feature/model-routing claims against code as part of DoD for the above
+
+---
+
 ## Backlog / Ideas
 > Future possibilities, not committed
 
@@ -127,7 +156,7 @@ A CLI tool that ingests various media (PDFs, videos, notes, articles) into isola
 | Deep analysis | openai/gpt-oss-120b | Quality |
 | Study guide | openai/gpt-oss-120b | Quality |
 | Summarization | llama-3.1-8b-instant | Good enough |
-| Transcription | whisper-large-v3 | Groq Whisper |
+| Transcription | whisper-large-v3-turbo | Groq Whisper (default; whisper-large-v3 for most accurate) |
 
 **Grounding prompt strategy:**
 - System prompt enforces source-only answers

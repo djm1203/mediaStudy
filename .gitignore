@@ -1,7 +1,7 @@
 # Rust build artifacts
 /target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock is committed: this is a binary crate and reproducible release builds need it.
 
 # IDE
 .idea/
@@ -27,3 +27,7 @@ config.toml
 *.db-journal
 *.db-wal
 *.db-shm
+# >>> BEACON Framework >>>
+.beacon-session.json
+.claude/settings.local.json
+# <<< BEACON Framework <<<
