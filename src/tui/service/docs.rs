@@ -1,43 +1,63 @@
 //! Docs pane service (blueprint §4).
 //!
-//! Real implementation calls `DocumentStore::{list,get,delete}` inside
-//! `tokio::task::spawn_blocking`. Phase 2a is a stub.
+//! Calls `DocumentStore::{list,get,delete}` inside `tokio::task::spawn_blocking`
+//! closures, each opening its own [`Database`] — never held across `.await`.
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
+use tokio::task;
 
-use crate::tui::action::{Message, ToastLevel};
+use crate::storage::{Database, DocumentStore};
+use crate::tui::action::{DocDetail, DocMeta, Message};
 
 /// Load the document list for the current bucket as [`Message::DocsLoaded`].
-///
-/// TODO(docs-pane): `spawn_blocking` → `DocumentStore::list()` → map to
-/// `DocMeta` → `Message::DocsLoaded(metas)`.
 pub async fn load_docs() -> Result<Message> {
-    Ok(Message::Toast {
-        level: ToastLevel::Warn,
-        text: "Docs not implemented yet".to_string(),
+    task::spawn_blocking(|| {
+        let db = Database::open()?;
+        let store = DocumentStore::new(&db);
+        let docs = store.list()?;
+        let metas = docs
+            .into_iter()
+            .map(|d| DocMeta {
+                id: d.id,
+                filename: d.filename,
+                content_type: d.content_type,
+                created_at: d.created_at.format("%m/%d %H:%M").to_string(),
+                tags: d.tags,
+                content_len: d.content.chars().count(),
+            })
+            .collect();
+        Ok(Message::DocsLoaded(metas))
     })
+    .await?
 }
 
 /// Load one document's full content as [`Message::DocLoaded`].
-///
-/// TODO(docs-pane): `spawn_blocking` → `DocumentStore::get(id)` →
-/// `Message::DocLoaded(detail)`.
 pub async fn load_doc(id: i64) -> Result<Message> {
-    let _ = id;
-    Ok(Message::Toast {
-        level: ToastLevel::Warn,
-        text: "Docs not implemented yet".to_string(),
+    task::spawn_blocking(move || {
+        let db = Database::open()?;
+        let store = DocumentStore::new(&db);
+        let doc = store
+            .get(id)?
+            .ok_or_else(|| anyhow!("Document {id} not found"))?;
+        Ok(Message::DocLoaded(DocDetail {
+            id: doc.id,
+            filename: doc.filename,
+            content_type: doc.content_type,
+            content: doc.content,
+        }))
     })
+    .await?
 }
 
 /// Delete a document by id, returning [`Message::DocDeleted`].
-///
-/// TODO(docs-pane): `spawn_blocking` → `DocumentStore::delete(id)` →
-/// `Message::DocDeleted { id }`.
 pub async fn delete_doc(id: i64) -> Result<Message> {
-    let _ = id;
-    Ok(Message::Toast {
-        level: ToastLevel::Warn,
-        text: "Delete not implemented yet".to_string(),
+    task::spawn_blocking(move || {
+        let db = Database::open()?;
+        let store = DocumentStore::new(&db);
+        if !store.delete(id)? {
+            return Err(anyhow!("Document {id} not found"));
+        }
+        Ok(Message::DocDeleted { id })
     })
+    .await?
 }

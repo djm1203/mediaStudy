@@ -25,6 +25,15 @@ author: Derek Martinez
   placeholders. build/clippy `-D warnings`/fmt/15 tests all green.
 - Noted a doc/code drift for B-009: default chat model is `openai/gpt-oss-120b`, not the
   `llama-3.3-70b-versatile` the README/docs claim.
+- **Phase 2a (committed):** established the `Pane` trait + `Ctx` so `App` delegates to per-screen
+  modules; froze the full `Action`/`Message` contract; split `service.rs` into per-pane modules;
+  stubbed the 7 panes as reachable placeholders (number keys 1–9).
+- **Phase 2b (green, verified):** implemented all seven panes in parallel (one agent each, isolated
+  to `ui/<pane>.rs` + `service/<pane>.rs`) — Search, Docs, Add/ingest (live progress dashboard),
+  Study (streamed generation, reusing `chat_stream_tx`), Quiz, Review (SM-2), Config. No shared-file
+  edits were needed; integrated build/clippy `-D warnings`/fmt/15 tests all green. The full TUI
+  (9 screens) is now functional. Remaining: Phase 3 — route arg-less subcommands into the TUI and
+  remove `inquire` + the legacy line-based menu.
 
 ## 2026-07-13 (v1.0 foundation — branch `v1-foundation`, uncommitted)
 

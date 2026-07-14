@@ -9,7 +9,7 @@ use tokio::task;
 
 use crate::config::Config;
 use crate::llm::GroqClient;
-use crate::tui::action::{ConfigData, Message, ToastLevel};
+use crate::tui::action::{ConfigData, Message};
 
 const DEFAULT_MODEL: &str = "openai/gpt-oss-120b";
 
@@ -36,12 +36,19 @@ pub async fn load_config() -> Result<Message> {
 
 /// Persist configuration changes as [`Message::ConfigSaved`].
 ///
-/// TODO(config-pane): `spawn_blocking` → load, apply `api_key`/`model`,
-/// `Config::save()` → `Message::ConfigSaved`.
+/// Loads the existing [`Config`], overwrites `groq_api_key`/`default_model`
+/// only where the caller passed `Some`, and saves it back. Never logs the key.
 pub async fn save_config(api_key: Option<String>, model: Option<String>) -> Result<Message> {
-    let _ = (api_key, model);
-    Ok(Message::Toast {
-        level: ToastLevel::Warn,
-        text: "Saving config not implemented yet".to_string(),
+    task::spawn_blocking(move || {
+        let mut config = Config::load().unwrap_or_default();
+        if let Some(key) = api_key {
+            config.groq_api_key = Some(key);
+        }
+        if let Some(model) = model {
+            config.default_model = Some(model);
+        }
+        config.save()?;
+        Ok(Message::ConfigSaved)
     })
+    .await?
 }
