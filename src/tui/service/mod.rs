@@ -8,6 +8,24 @@
 //!
 //! These call the *lower-level* stores/LLM/embeddings directly — never the
 //! interactive `commands::*::run()` orchestrators (which print + prompt).
+//!
+//! # Per-pane services (Phase 2)
+//!
+//! Chat + library live in this file (unchanged). Every other pane owns a
+//! sibling module — [`search`], [`docs`], [`add`], [`study`], [`quiz`],
+//! [`review`], [`config`] — whose function *signatures* are what
+//! [`super::worker::dispatch`] calls. Phase 2a ships those as minimal safe
+//! stubs; a pane agent fills in the body of its own module only. **All DB /
+//! embedding work in these modules must run inside `tokio::task::spawn_blocking`
+//! closures that open their own [`Database`]** — never held across `.await`.
+
+pub mod add;
+pub mod config;
+pub mod docs;
+pub mod quiz;
+pub mod review;
+pub mod search;
+pub mod study;
 
 use anyhow::Result;
 use tokio::sync::mpsc::UnboundedSender;
@@ -18,7 +36,6 @@ use crate::commands::chat::{build_fts_context, build_semantic_context};
 use crate::config::Config;
 use crate::llm::GroqClient;
 use crate::llm::groq::Message as LlmMessage;
-use crate::search;
 use crate::storage::{ChunkStore, ConversationStore, Database, DocumentStore};
 
 use super::action::{ConversationMeta, Message};
@@ -200,7 +217,7 @@ fn build_context(question: &str) -> Result<String> {
     // A fixed, generous budget — the TUI does not thread through live token
     // accounting in Phase 1.
     let max_context = 8000usize;
-    let enhanced = search::enhance_query(question);
+    let enhanced = crate::search::enhance_query(question);
 
     let context = if chunk_count > 0 {
         build_semantic_context(&chunk_store, &doc_store, &enhanced, max_context)?

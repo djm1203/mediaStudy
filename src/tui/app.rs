@@ -1,10 +1,15 @@
 //! Application state + pure reducers (blueprint §2).
 //!
-//! [`App`] owns all UI state. `handle_event` translates a crossterm event into
-//! an optional [`Action`] (side-effect intent) while mutating local UI state;
-//! `update` folds a worker [`Message`] into state; `on_tick` drives toast expiry
-//! and the spinner. No network or DB work happens here — that is the worker's
-//! job, reached via `action_tx` or the `Action` returned from `handle_event`.
+//! [`App`] owns all UI state, including one `…State` value per screen.
+//! `handle_event` translates a crossterm event into an optional [`Action`]
+//! (side-effect intent) while mutating local UI state; `update` folds a worker
+//! [`Message`] into state; `on_tick` drives toast expiry and the spinner. No
+//! network or DB work happens here — that is the worker's job, reached via
+//! `action_tx` or the `Action` returned from `handle_event`.
+//!
+//! Home + Chat are handled bespoke; the seven Phase-2 panes (Search, Docs, Add,
+//! Study, Quiz, Review, Config) are driven **generically** through the
+//! [`Pane`] trait, so a pane agent only touches its own `ui/<pane>.rs`.
 
 use std::time::Instant;
 
@@ -16,15 +21,14 @@ use crate::llm::groq::Message as LlmMessage;
 use super::action::{Action, ConversationMeta, Message, ToastLevel};
 use super::service;
 use super::theme::Theme;
+use super::ui::{
+    AddState, ConfigState, Ctx, DocsState, Pane, QuizState, ReviewState, SearchState, StudyState,
+};
 
 const TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(4);
 pub const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// Home + Chat are live in Phase 1; the rest are the navigation targets that
-// `run_on` and the Phase 3 subcommand cutover route into (they render a
-// placeholder for now). Kept in the enum so the surface is stable.
-#[allow(dead_code)]
 pub enum Screen {
     Home,
     Chat,
@@ -94,6 +98,14 @@ pub struct ChatState {
     pub scroll: u16,
 }
 
+/// Outcome of testing a key against the global keymap.
+enum KeyResult {
+    /// The key was a global binding; carries an optional [`Action`] to dispatch.
+    Consumed(Option<Action>),
+    /// Not a global key — the active screen should handle it.
+    Pass,
+}
+
 pub struct App {
     pub screen: Screen,
     pub focus: Focus,
@@ -110,8 +122,15 @@ pub struct App {
     pub has_api_key: bool,
     pub model: String,
 
-    // Per-screen sub-state (Phase 1: Chat only; others land in Phase 2).
+    // Per-screen sub-state.
     pub chat: ChatState,
+    pub search: SearchState,
+    pub docs: DocsState,
+    pub add: AddState,
+    pub study: StudyState,
+    pub quiz: QuizState,
+    pub review: ReviewState,
+    pub config: ConfigState,
 
     // Cross-cutting.
     pub status: Option<Toast>,
@@ -137,6 +156,13 @@ impl App {
             has_api_key: false,
             model: String::new(),
             chat: ChatState::default(),
+            search: SearchState::new(),
+            docs: DocsState::new(),
+            add: AddState::new(),
+            study: StudyState::new(),
+            quiz: QuizState::new(),
+            review: ReviewState::new(),
+            config: ConfigState::new(),
             status: None,
             inflight: 0,
             spinner: 0,
@@ -151,6 +177,56 @@ impl App {
             text: text.into(),
             created: Instant::now(),
         });
+    }
+
+    /// Build the read-only context handed to a pane's `on_key`.
+    fn ctx(&self) -> Ctx {
+        Ctx {
+            current_bucket: self.current_bucket.clone(),
+            has_api_key: self.has_api_key,
+            model: self.model.clone(),
+            doc_count: self.doc_count,
+            chunk_count: self.chunk_count,
+            action_tx: self.action_tx.clone(),
+        }
+    }
+
+    /// The active screen as a [`Pane`], for the seven generic panes only
+    /// (Home + Chat are bespoke and return `None`).
+    pub fn active_pane(&self) -> Option<&dyn Pane> {
+        match self.screen {
+            Screen::Search => Some(&self.search),
+            Screen::Docs => Some(&self.docs),
+            Screen::Add => Some(&self.add),
+            Screen::Study => Some(&self.study),
+            Screen::Quiz => Some(&self.quiz),
+            Screen::Review => Some(&self.review),
+            Screen::Config => Some(&self.config),
+            _ => None,
+        }
+    }
+
+    fn active_pane_mut(&mut self) -> Option<&mut dyn Pane> {
+        match self.screen {
+            Screen::Search => Some(&mut self.search),
+            Screen::Docs => Some(&mut self.docs),
+            Screen::Add => Some(&mut self.add),
+            Screen::Study => Some(&mut self.study),
+            Screen::Quiz => Some(&mut self.quiz),
+            Screen::Review => Some(&mut self.review),
+            Screen::Config => Some(&mut self.config),
+            _ => None,
+        }
+    }
+
+    /// Whether the active screen is currently capturing free text (so global
+    /// nav keys must be suppressed and every key routed to the screen).
+    fn capturing_input(&self) -> bool {
+        match self.screen {
+            Screen::Chat => self.input_mode == InputMode::Editing,
+            Screen::Home => false,
+            _ => self.active_pane().map(|p| p.wants_input()).unwrap_or(false),
+        }
     }
 
     // ---- event handling -------------------------------------------------
@@ -181,51 +257,86 @@ impl App {
             return None;
         }
 
-        // Compose mode captures text keys.
-        if self.input_mode == InputMode::Editing {
-            return self.on_key_editing(key);
+        // Unless the active screen is capturing text, global keys win first.
+        if !self.capturing_input() {
+            match self.handle_global_key(key) {
+                KeyResult::Consumed(action) => return action,
+                KeyResult::Pass => {}
+            }
+            if self.focus == Focus::Sidebar {
+                return self.on_key_sidebar(key);
+            }
         }
 
-        // Global normal-mode keys.
+        // Delegate to the active screen.
+        match self.screen {
+            Screen::Home => None,
+            Screen::Chat => self.on_key_chat(key),
+            _ => {
+                let ctx = self.ctx();
+                self.active_pane_mut().and_then(|p| p.on_key(key, &ctx))
+            }
+        }
+    }
+
+    /// Resolve a key against the always-on global keymap.
+    fn handle_global_key(&mut self, key: KeyEvent) -> KeyResult {
         match key.code {
             KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.theme.toggle();
-                return None;
+                KeyResult::Consumed(None)
             }
             KeyCode::Char('q') => {
                 self.should_quit = true;
-                return None;
+                KeyResult::Consumed(None)
             }
             KeyCode::Char('?') => {
                 self.overlay = Overlay::Help;
-                return None;
+                KeyResult::Consumed(None)
             }
             KeyCode::Tab => {
                 self.cycle_focus();
-                return None;
-            }
-            KeyCode::Char('1') => {
-                self.screen = Screen::Home;
-                return None;
-            }
-            KeyCode::Char('2') => {
-                return self.enter_chat();
+                KeyResult::Consumed(None)
             }
             KeyCode::Esc => {
                 if self.screen != Screen::Home {
-                    self.screen = Screen::Home;
+                    self.goto(Screen::Home);
                 }
-                return None;
+                KeyResult::Consumed(None)
             }
-            _ => {}
+            KeyCode::Char(c @ '1'..='9') => KeyResult::Consumed(self.nav_to(c)),
+            _ => KeyResult::Pass,
         }
+    }
 
-        // Focus / screen specific.
-        if self.focus == Focus::Sidebar {
-            return self.on_key_sidebar(key);
-        }
-        match self.screen {
-            Screen::Chat => self.on_key_chat_normal(key),
+    /// Map a number key to its screen and switch to it.
+    fn nav_to(&mut self, c: char) -> Option<Action> {
+        let screen = match c {
+            '1' => Screen::Home,
+            '2' => Screen::Chat,
+            '3' => Screen::Search,
+            '4' => Screen::Docs,
+            '5' => Screen::Add,
+            '6' => Screen::Study,
+            '7' => Screen::Quiz,
+            '8' => Screen::Review,
+            '9' => Screen::Config,
+            _ => return None,
+        };
+        self.goto(screen)
+    }
+
+    /// Switch to `screen`, resetting focus/input, and return the action that
+    /// screen wants fired on entry (e.g. loading its data), if any.
+    fn goto(&mut self, screen: Screen) -> Option<Action> {
+        self.screen = screen;
+        self.focus = Focus::Main;
+        self.input_mode = InputMode::Normal;
+        match screen {
+            Screen::Chat => Some(Action::LoadConversations),
+            Screen::Docs => Some(Action::LoadDocs),
+            Screen::Review => Some(Action::LoadDue),
+            Screen::Config => Some(Action::LoadConfig),
             _ => None,
         }
     }
@@ -259,10 +370,14 @@ impl App {
         None
     }
 
-    fn enter_chat(&mut self) -> Option<Action> {
-        self.screen = Screen::Chat;
-        self.focus = Focus::Main;
-        Some(Action::LoadConversations)
+    // ---- chat screen ----------------------------------------------------
+
+    fn on_key_chat(&mut self, key: KeyEvent) -> Option<Action> {
+        if self.input_mode == InputMode::Editing {
+            self.on_key_editing(key)
+        } else {
+            self.on_key_chat_normal(key)
+        }
     }
 
     fn on_key_chat_normal(&mut self, key: KeyEvent) -> Option<Action> {
@@ -361,9 +476,11 @@ impl App {
 
     // ---- reducer --------------------------------------------------------
 
-    /// Fold a worker message into state.
+    /// Fold a worker message into state. Pane-addressed results are routed to
+    /// the owning pane's [`Pane::apply`] regardless of the active screen.
     pub fn update(&mut self, msg: Message) {
         match msg {
+            // ---- global / library ----
             Message::LibraryLoaded {
                 buckets,
                 current,
@@ -388,6 +505,8 @@ impl App {
                     );
                 }
             }
+
+            // ---- chat ----
             Message::ConversationsLoaded(list) => {
                 self.chat.conversations = list;
             }
@@ -419,6 +538,21 @@ impl App {
                 }
                 self.set_toast(ToastLevel::Error, text);
             }
+
+            // ---- pane-addressed results ----
+            Message::SearchResults { .. } => self.search.apply(&msg),
+            Message::DocsLoaded(_) | Message::DocLoaded(_) | Message::DocDeleted { .. } => {
+                self.docs.apply(&msg)
+            }
+            Message::IngestProgress { .. }
+            | Message::IngestFileDone { .. }
+            | Message::IngestComplete { .. } => self.add.apply(&msg),
+            Message::StudyToken(_) | Message::StudyDone { .. } => self.study.apply(&msg),
+            Message::QuizGenerated(_) | Message::QuizGraded { .. } => self.quiz.apply(&msg),
+            Message::DueLoaded(_) | Message::ReviewGraded { .. } => self.review.apply(&msg),
+            Message::ConfigLoaded(_) | Message::ConfigSaved => self.config.apply(&msg),
+
+            // ---- cross-cutting ----
             Message::Toast { level, text } => {
                 self.set_toast(level, text);
             }

@@ -1,17 +1,29 @@
 //! Keymap metadata (blueprint §5).
 //!
-//! Phase 1 keeps this minimal: static `(keys, description)` tables that feed
-//! both the status-bar hint and the help overlay. Later phases add per-screen
-//! chord resolution here.
+//! Phase 2 keeps this as static `(keys, description)` tables that feed both the
+//! status-bar hint and the help overlay. Later phases add per-screen chord
+//! resolution here.
 
 /// Global keybindings, always active.
 pub const GLOBAL: &[(&str, &str)] = &[
     ("q / Ctrl-C", "Quit"),
     ("?", "Toggle help"),
     ("Tab", "Cycle focus"),
-    ("1 / 2", "Home / Chat"),
     ("Ctrl-T", "Toggle theme"),
-    ("Esc", "Back / close"),
+    ("Esc", "Back to Home"),
+];
+
+/// Screen navigation (number keys), reachable from any non-editing screen.
+pub const NAV: &[(&str, &str)] = &[
+    ("1", "Home"),
+    ("2", "Chat"),
+    ("3", "Search"),
+    ("4", "Docs"),
+    ("5", "Add"),
+    ("6", "Study"),
+    ("7", "Quiz"),
+    ("8", "Review"),
+    ("9", "Config"),
 ];
 
 /// Sidebar-focused keybindings.
@@ -31,6 +43,6 @@ pub fn status_hint(editing: bool) -> &'static str {
     if editing {
         "Enter send · Esc cancel · Ctrl-C quit"
     } else {
-        "? help · Tab focus · 1 Home · 2 Chat · q quit"
+        "? help · 1-9 screens · Tab focus · q quit"
     }
 }

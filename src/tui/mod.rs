@@ -1,10 +1,15 @@
 //! Full-screen terminal UI for The Librarian.
 //!
-//! Phase 1 of Epic E3 (see `docs/design/TUI_ARCHITECTURE.md`): the async
+//! Phase 1 of Epic E3 (see `docs/design/TUI_ARCHITECTURE.md`) built the async
 //! event/render loop, the `Action`/`Message` plumbing, the service + worker
 //! layers, and a working Chat vertical slice (RAG context → streamed reply →
-//! persisted turn). Home + Chat are live; other screens render placeholders
-//! until Phase 2.
+//! persisted turn). Home + Chat are live.
+//!
+//! Phase 2a adds the conflict-free pane scaffolding: the full `Action`/`Message`
+//! surface for every screen, a uniform [`ui::Pane`] contract that `app`/`worker`
+//! drive generically, per-pane state modules (`ui/<pane>.rs`) and per-pane
+//! service stubs (`service/<pane>.rs`). The seven Phase-2 panes render themed
+//! "coming soon" placeholders; a follow-on agent implements each in isolation.
 
 mod action;
 mod app;

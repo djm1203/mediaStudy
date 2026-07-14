@@ -2,11 +2,30 @@
 //!
 //! `draw` lays out the persistent three-region frame — sidebar | main | status —
 //! routes the main region to the active screen, and paints overlays on top.
+//! Home + Chat are bespoke; the seven Phase-2 panes are driven generically
+//! through the [`Pane`] trait (see [`pane`]).
 
+mod add;
 mod chat;
+mod config;
+mod docs;
 mod home;
+mod pane;
+mod quiz;
+mod review;
+mod search;
 mod sidebar;
 mod statusbar;
+mod study;
+
+pub use add::AddState;
+pub use config::ConfigState;
+pub use docs::DocsState;
+pub use pane::{Ctx, Pane};
+pub use quiz::QuizState;
+pub use review::ReviewState;
+pub use search::SearchState;
+pub use study::StudyState;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -14,7 +33,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
-use super::app::{App, Overlay, Screen};
+use super::app::{App, Focus, Overlay, Screen};
 use super::keymap;
 
 /// Render one frame.
@@ -33,10 +52,17 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     sidebar::render(frame, app, sidebar);
 
+    // Home + Chat keep their bespoke renderers; every other screen renders
+    // generically through its `Pane`.
     match app.screen {
         Screen::Home => home::render(frame, app, main),
         Screen::Chat => chat::render(frame, app, main),
-        other => placeholder(frame, app, main, other),
+        _ => {
+            if let Some(p) = app.active_pane() {
+                let focused = app.focus != Focus::Sidebar;
+                p.render(frame, main, &app.theme, focused);
+            }
+        }
     }
 
     statusbar::render(frame, app, status);
@@ -46,33 +72,17 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
-/// "Coming soon" placeholder for screens not yet built (Phase 2).
-fn placeholder(frame: &mut Frame, app: &App, area: Rect, screen: Screen) {
-    let block = Block::bordered()
-        .title(format!(" {} ", screen.title()))
-        .border_style(app.theme.border(false));
-    let text = vec![
-        Line::from(""),
-        Line::from(Span::styled(
-            format!("  {} — coming soon", screen.title()),
-            app.theme.title(),
-        )),
-        Line::from(Span::styled(
-            "  This screen arrives in Phase 2.",
-            app.theme.dim(),
-        )),
-    ];
-    frame.render_widget(Paragraph::new(text).block(block), area);
-}
-
 /// Centered help overlay generated from the keymap tables.
 fn render_help(frame: &mut Frame, app: &App, area: Rect) {
-    let popup = centered_rect(60, 70, area);
+    let popup = centered_rect(60, 80, area);
     frame.render_widget(Clear, popup);
 
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(Span::styled("  Global", app.theme.title())));
     push_hints(&mut lines, app, keymap::GLOBAL);
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled("  Navigation", app.theme.title())));
+    push_hints(&mut lines, app, keymap::NAV);
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled("  Sidebar", app.theme.title())));
     push_hints(&mut lines, app, keymap::SIDEBAR);

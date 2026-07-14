@@ -53,7 +53,11 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         ),
         Line::from(""),
         Line::from(Span::styled(
-            "  Press 2 to chat · Tab to focus the library · ? for help",
+            "  2 Chat · 3 Search · 4 Docs · 5 Add · 6 Study · 7 Quiz · 8 Review · 9 Config",
+            app.theme.dim(),
+        )),
+        Line::from(Span::styled(
+            "  Tab to focus the library · ? for help",
             app.theme.dim(),
         )),
     ];
