@@ -11,7 +11,7 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::config::Config;
-use crate::llm::whisper::{self, WhisperClient};
+use crate::llm::whisper;
 
 /// Supported content types
 #[derive(Debug, Clone)]
@@ -120,15 +120,12 @@ pub async fn extract_from_file_async(path: &Path) -> Result<ExtractedContent> {
     })
 }
 
-/// Transcribe an audio file using Groq Whisper
+/// Transcribe an audio file using the configured transcription provider
+/// (Groq Whisper, falling back to OpenAI).
 async fn transcribe_audio(path: &Path) -> Result<String> {
     let config = Config::load()?;
-    let api_key = config
-        .get_api_key()
-        .ok_or_else(|| anyhow::anyhow!("No API key configured for transcription"))?;
-
-    let client = WhisperClient::new(api_key, None);
-    client.transcribe(path).await
+    let transcriber = config.resolve_transcriber()?;
+    transcriber.transcribe(path).await
 }
 
 /// Transcribe a video file (extract audio first, then transcribe)

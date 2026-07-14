@@ -4,7 +4,7 @@
 //! all `rusqlite` + `fastembed` work is confined to `tokio::task::spawn_blocking`
 //! closures that each open their own [`Database`] (never held across `.await`,
 //! never shared with the render loop). Streaming chat is orchestrated here via
-//! [`GroqClient::chat_stream_tx`].
+//! [`crate::llm::provider::Provider::chat_stream`].
 //!
 //! These call the *lower-level* stores/LLM/embeddings directly — never the
 //! interactive `commands::*::run()` orchestrators (which print + prompt).
@@ -34,15 +34,10 @@ use tokio::task;
 use crate::bucket::{self, Bucket};
 use crate::commands::chat::{build_fts_context, build_semantic_context};
 use crate::config::Config;
-use crate::llm::GroqClient;
-use crate::llm::groq::Message as LlmMessage;
+use crate::llm::Message as LlmMessage;
 use crate::storage::{ChunkStore, ConversationStore, Database, DocumentStore};
 
 use super::action::{ConversationMeta, Message};
-
-/// Default model id, mirrored from [`GroqClient`] so we can name it without
-/// constructing a client just to read `.model`.
-const DEFAULT_MODEL: &str = "openai/gpt-oss-120b";
 
 const GROUNDED_SYSTEM_PROMPT: &str = r#"You are The Librarian, a knowledgeable study assistant helping a student learn from their course materials.
 
@@ -86,10 +81,7 @@ pub async fn load_library() -> Result<Message> {
 
         let config = Config::load().unwrap_or_default();
         let has_api_key = config.has_api_key();
-        let model = config
-            .default_model
-            .clone()
-            .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let model = config.resolved_model();
 
         let (doc_count, chunk_count) = match Database::open() {
             Ok(db) => {
@@ -153,10 +145,7 @@ pub async fn run_chat(
     msg_tx: UnboundedSender<Message>,
 ) -> Result<()> {
     let config = Config::load()?;
-    let api_key = config.get_api_key().ok_or_else(|| {
-        anyhow::anyhow!("No API key configured. Run `librarian config` to set one.")
-    })?;
-    let client = GroqClient::new(api_key, config.default_model);
+    let provider = config.resolve_provider()?;
 
     // 1. Build retrieval context on a blocking thread (opens its own DB).
     let q_for_ctx = question.clone();
@@ -176,9 +165,9 @@ pub async fn run_chat(
     // 3. Stream tokens. Run the SSE loop concurrently with the forwarding loop
     //    so tokens reach the render loop live.
     let (tok_tx, mut tok_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    let stream_client = client.clone();
+    let stream_provider = provider.clone();
     let stream_handle =
-        tokio::spawn(async move { stream_client.chat_stream_tx(&api_messages, tok_tx).await });
+        tokio::spawn(async move { stream_provider.chat_stream(&api_messages, tok_tx).await });
 
     while let Some(token) = tok_rx.recv().await {
         let _ = msg_tx.send(Message::ChatToken(token));

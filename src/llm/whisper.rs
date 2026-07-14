@@ -3,37 +3,60 @@ use reqwest::multipart;
 use serde::Deserialize;
 use std::path::Path;
 
-const GROQ_WHISPER_URL: &str = "https://api.groq.com/openai/v1/audio/transcriptions";
-
-#[derive(Debug, Clone)]
-pub struct WhisperClient {
-    client: reqwest::Client,
-    api_key: String,
-    pub model: String,
-}
-
 #[derive(Debug, Deserialize)]
 struct TranscriptionResponse {
     text: String,
 }
 
-impl WhisperClient {
-    /// Available Whisper models on Groq
-    #[allow(dead_code)]
-    pub const MODELS: &'static [(&'static str, &'static str)] = &[
-        (
-            "whisper-large-v3-turbo",
-            "Whisper Large v3 Turbo - Fast and accurate",
-        ),
-        ("whisper-large-v3", "Whisper Large v3 - Most accurate"),
-    ];
+/// Multi-provider audio transcription client.
+///
+/// Speaks the OpenAI-compatible `POST {base_url}/audio/transcriptions` endpoint,
+/// so it serves both Groq Whisper (`whisper-large-v3-turbo`) and OpenAI
+/// (`whisper-1`). Build one via [`Transcriber::groq`] / [`Transcriber::openai`],
+/// which the config's `resolve_transcriber` selects between.
+#[derive(Debug, Clone)]
+pub struct Transcriber {
+    client: reqwest::Client,
+    api_key: String,
+    base_url: String,
+    label: String,
+    pub model: String,
+}
 
-    pub fn new(api_key: String, model: Option<String>) -> Self {
+impl Transcriber {
+    fn new(
+        api_key: String,
+        base_url: impl Into<String>,
+        label: impl Into<String>,
+        model: impl Into<String>,
+    ) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,
-            model: model.unwrap_or_else(|| "whisper-large-v3-turbo".to_string()),
+            base_url: base_url.into(),
+            label: label.into(),
+            model: model.into(),
         }
+    }
+
+    /// Groq Whisper transcriber (`whisper-large-v3-turbo`).
+    pub fn groq(api_key: String) -> Self {
+        Self::new(
+            api_key,
+            "https://api.groq.com/openai/v1",
+            "Groq Whisper",
+            "whisper-large-v3-turbo",
+        )
+    }
+
+    /// OpenAI transcriber (`whisper-1`).
+    pub fn openai(api_key: String) -> Self {
+        Self::new(
+            api_key,
+            "https://api.openai.com/v1",
+            "OpenAI Whisper",
+            "whisper-1",
+        )
     }
 
     /// Transcribe an audio file
@@ -56,25 +79,26 @@ impl WhisperClient {
             .text("model", self.model.clone())
             .text("response_format", "json");
 
+        let url = format!("{}/audio/transcriptions", self.base_url);
         let response = self
             .client
-            .post(GROQ_WHISPER_URL)
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .multipart(form)
             .send()
             .await
-            .context("Failed to send request to Groq Whisper")?;
+            .with_context(|| format!("Failed to send request to {}", self.label))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Groq Whisper API error ({}): {}", status, text);
+            anyhow::bail!("{} API error ({}): {}", self.label, status, text);
         }
 
         let transcription: TranscriptionResponse = response
             .json()
             .await
-            .context("Failed to parse Whisper response")?;
+            .context("Failed to parse transcription response")?;
 
         Ok(transcription.text)
     }

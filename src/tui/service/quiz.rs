@@ -1,7 +1,7 @@
 //! Quiz pane service (blueprint §4).
 //!
 //! Generates questions from the current bucket's materials
-//! (`get_document_context_pub` → `GroqClient::chat` → `parse_quiz_questions`),
+//! (`get_document_context_pub` → `Provider::chat` → `parse_quiz_questions`),
 //! persists them as `study_items` so they gain real ids and feed spaced
 //! repetition, and grades answers with `StudyStore::update_after_review` (SM-2).
 //!
@@ -14,8 +14,7 @@ use tokio::task;
 use crate::commands::generate::get_document_context_pub;
 use crate::commands::quiz::{QuizQuestion, parse_quiz_questions};
 use crate::config::Config;
-use crate::llm::GroqClient;
-use crate::llm::groq::Message as LlmMessage;
+use crate::llm::Message as LlmMessage;
 use crate::storage::{Database, StudyStore};
 use crate::tui::action::{Message, StudyCard};
 
@@ -59,10 +58,7 @@ pub async fn start_quiz(count: usize) -> Result<Message> {
     let count = count.clamp(1, 50);
 
     let config = Config::load()?;
-    let api_key = config
-        .get_api_key()
-        .ok_or_else(|| anyhow!("No API key configured. Run `librarian config` to set one."))?;
-    let client = GroqClient::new(api_key, config.default_model);
+    let provider = config.resolve_provider()?;
 
     // 1. Build document context on a blocking thread (opens its own DB). No
     //    topic filter — quiz over all of the current bucket's materials.
@@ -84,7 +80,7 @@ pub async fn start_quiz(count: usize) -> Result<Message> {
             ),
         },
     ];
-    let response = client.chat(&messages).await?;
+    let response = provider.chat(&messages).await?;
 
     // 3. Parse questions from the model output.
     let questions = parse_quiz_questions(&response);

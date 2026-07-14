@@ -1,66 +1,29 @@
-#![allow(clippy::collapsible_if)]
+//! Groq model registry and the shared chat [`Message`] type.
+//!
+//! The live chat client now lives in [`crate::llm::provider`] (Groq is served by
+//! `OpenAiCompatClient`). This module retains two things every provider depends
+//! on: the [`Message`] wire type (re-exported as `crate::llm::Message`) and the
+//! Groq [`GroqClient::MODELS`] table, consumed by `provider::suggested_models`
+//! and the TUI Config pane.
 
-use anyhow::{Context, Result};
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
 
-const GROQ_API_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
-
-#[derive(Debug, Clone)]
-pub struct GroqClient {
-    client: reqwest::Client,
-    api_key: String,
-    pub model: String,
-}
-
-#[derive(Debug, Serialize)]
-struct ChatRequest {
-    model: String,
-    messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
-    stream: bool,
-}
-
+/// A single chat message (`role` = `system` / `user` / `assistant`).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Message {
     pub role: String,
     pub content: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<Choice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Choice {
-    message: Message,
-}
-
-/// Streaming response chunk
-#[derive(Debug, Deserialize)]
-struct StreamChunk {
-    choices: Vec<StreamChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct StreamChoice {
-    delta: Delta,
-    #[allow(dead_code)]
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Delta {
-    content: Option<String>,
-}
+/// Namespace for the Groq model registry.
+///
+/// Retained as a zero-sized marker so existing references to
+/// `GroqClient::MODELS` keep compiling; the actual client is
+/// [`crate::llm::provider::OpenAiCompatClient`].
+pub struct GroqClient;
 
 impl GroqClient {
-    /// Available models on Groq: (id, description, context_window_tokens)
+    /// Available models on Groq: `(id, description, context_window_tokens)`.
     pub const MODELS: &'static [(&'static str, &'static str, usize)] = &[
         (
             "openai/gpt-oss-120b",
@@ -80,229 +43,4 @@ impl GroqClient {
         ("mixtral-8x7b-32768", "Mixtral 8x7B - Good balance", 32768),
         ("gemma2-9b-it", "Gemma 2 9B - Google's model", 8192),
     ];
-
-    pub fn new(api_key: String, model: Option<String>) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            api_key,
-            model: model.unwrap_or_else(|| "openai/gpt-oss-120b".to_string()),
-        }
-    }
-
-    /// Get the context window size (in tokens) for the current model
-    pub fn context_window(&self) -> usize {
-        Self::MODELS
-            .iter()
-            .find(|(id, _, _)| *id == self.model)
-            .map(|(_, _, ctx)| *ctx)
-            .unwrap_or(8192)
-    }
-
-    /// Calculate available context chars for RAG, given current usage
-    /// Uses ~4 chars/token estimate
-    pub fn available_context_chars(
-        &self,
-        system_chars: usize,
-        conversation_chars: usize,
-        reserved_response_tokens: usize,
-    ) -> usize {
-        let total_tokens = self.context_window();
-        let used_tokens = (system_chars + conversation_chars) / 4;
-        let available_tokens = total_tokens.saturating_sub(used_tokens + reserved_response_tokens);
-        available_tokens * 4
-    }
-
-    /// Send a chat message and get a response (non-streaming)
-    pub async fn chat(&self, messages: &[Message]) -> Result<String> {
-        let request = ChatRequest {
-            model: self.model.clone(),
-            messages: messages.to_vec(),
-            temperature: Some(0.7),
-            max_tokens: Some(4096),
-            stream: false,
-        };
-
-        let response = self
-            .client
-            .post(GROQ_API_URL)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await
-            .context("Failed to send request to Groq")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Groq API error ({}): {}", status, text);
-        }
-
-        let chat_response: ChatResponse = response
-            .json()
-            .await
-            .context("Failed to parse Groq response")?;
-
-        chat_response
-            .choices
-            .first()
-            .map(|c| c.message.content.clone())
-            .context("No response from Groq")
-    }
-
-    /// Send a chat message with streaming response
-    /// Prints tokens as they arrive and returns the complete response
-    pub async fn chat_stream(&self, messages: &[Message]) -> Result<String> {
-        let request = ChatRequest {
-            model: self.model.clone(),
-            messages: messages.to_vec(),
-            temperature: Some(0.7),
-            max_tokens: Some(4096),
-            stream: true,
-        };
-
-        let response = self
-            .client
-            .post(GROQ_API_URL)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await
-            .context("Failed to send request to Groq")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Groq API error ({}): {}", status, text);
-        }
-
-        let mut full_response = String::new();
-        let mut stream = response.bytes_stream();
-
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.context("Failed to read stream chunk")?;
-            let chunk_str = String::from_utf8_lossy(&chunk);
-
-            // SSE format: "data: {...}\n\n"
-            for line in chunk_str.lines() {
-                if let Some(data) = line.strip_prefix("data: ") {
-                    if data == "[DONE]" {
-                        break;
-                    }
-
-                    if let Ok(parsed) = serde_json::from_str::<StreamChunk>(data) {
-                        if let Some(choice) = parsed.choices.first() {
-                            if let Some(content) = &choice.delta.content {
-                                // Print token immediately
-                                print!("{}", content);
-                                std::io::stdout().flush().ok();
-                                full_response.push_str(content);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Print newline after streaming completes
-        println!();
-
-        Ok(full_response)
-    }
-
-    /// Send a chat message with streaming response, forwarding each token over a
-    /// channel instead of printing to stdout. Mirrors [`chat_stream`]'s Groq SSE
-    /// parse loop but is safe to drive from inside the TUI (no terminal writes).
-    ///
-    /// Each `delta.content` fragment is sent as a raw `String` over `tx`; the
-    /// caller wraps it into whatever message type it needs. Returns the full
-    /// concatenated response. Send failures (receiver dropped) end the stream.
-    pub async fn chat_stream_tx(
-        &self,
-        messages: &[Message],
-        tx: tokio::sync::mpsc::UnboundedSender<String>,
-    ) -> Result<String> {
-        let request = ChatRequest {
-            model: self.model.clone(),
-            messages: messages.to_vec(),
-            temperature: Some(0.7),
-            max_tokens: Some(4096),
-            stream: true,
-        };
-
-        let response = self
-            .client
-            .post(GROQ_API_URL)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await
-            .context("Failed to send request to Groq")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Groq API error ({}): {}", status, text);
-        }
-
-        let mut full_response = String::new();
-        let mut stream = response.bytes_stream();
-
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.context("Failed to read stream chunk")?;
-            let chunk_str = String::from_utf8_lossy(&chunk);
-
-            // SSE format: "data: {...}\n\n"
-            for line in chunk_str.lines() {
-                if let Some(data) = line.strip_prefix("data: ") {
-                    if data == "[DONE]" {
-                        break;
-                    }
-
-                    if let Ok(parsed) = serde_json::from_str::<StreamChunk>(data) {
-                        if let Some(choice) = parsed.choices.first() {
-                            if let Some(content) = &choice.delta.content {
-                                full_response.push_str(content);
-                                // Forward token to the caller. If the receiver is
-                                // gone, stop early and return what we have.
-                                if tx.send(content.clone()).is_err() {
-                                    return Ok(full_response);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(full_response)
-    }
-
-    /// Simple single-turn query
-    #[allow(dead_code)]
-    pub async fn query(&self, prompt: &str) -> Result<String> {
-        let messages = vec![Message {
-            role: "user".to_string(),
-            content: prompt.to_string(),
-        }];
-        self.chat(&messages).await
-    }
-
-    /// Query with a system prompt
-    #[allow(dead_code)]
-    pub async fn query_with_system(&self, system: &str, user: &str) -> Result<String> {
-        let messages = vec![
-            Message {
-                role: "system".to_string(),
-                content: system.to_string(),
-            },
-            Message {
-                role: "user".to_string(),
-                content: user.to_string(),
-            },
-        ];
-        self.chat(&messages).await
-    }
 }

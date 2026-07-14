@@ -1,4 +1,5 @@
 pub mod groq;
+pub mod provider;
 pub mod whisper;
 
-pub use groq::GroqClient;
+pub use groq::{GroqClient, Message};

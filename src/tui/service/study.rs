@@ -1,7 +1,8 @@
 //! Study pane service (blueprint §4).
 //!
-//! Streams generated study material by reusing [`GroqClient::chat_stream_tx`]
-//! (same pattern as [`super::run_chat`]): build the document context off-thread
+//! Streams generated study material via
+//! [`crate::llm::provider::Provider::chat_stream`] (same pattern as
+//! [`super::run_chat`]): build the document context off-thread
 //! with [`get_document_context_pub`], pick the system prompt from
 //! [`crate::commands::generate::prompts`] by `kind`, assemble a system + user
 //! message pair, stream each token back as [`Message::StudyToken`], then emit a
@@ -22,8 +23,7 @@ use tokio::task;
 
 use crate::commands::generate::{get_document_context_pub, parse_qa_pairs, prompts};
 use crate::config::Config;
-use crate::llm::GroqClient;
-use crate::llm::groq::Message as LlmMessage;
+use crate::llm::Message as LlmMessage;
 use crate::storage::{Database, StudyStore};
 use crate::tui::action::{Message, ToastLevel};
 
@@ -49,10 +49,7 @@ pub async fn generate_study(
     msg_tx: UnboundedSender<Message>,
 ) -> Result<()> {
     let config = Config::load()?;
-    let api_key = config.get_api_key().ok_or_else(|| {
-        anyhow::anyhow!("No API key configured. Run `librarian config` to set one.")
-    })?;
-    let client = GroqClient::new(api_key, config.default_model);
+    let provider = config.resolve_provider()?;
 
     let (system_prompt, name) = resolve_kind(&kind);
 
@@ -94,9 +91,9 @@ pub async fn generate_study(
     // 3. Stream tokens: run the SSE loop concurrently with the forwarding loop so
     //    tokens reach the render loop live.
     let (tok_tx, mut tok_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    let stream_client = client.clone();
+    let stream_provider = provider.clone();
     let stream_handle =
-        tokio::spawn(async move { stream_client.chat_stream_tx(&messages, tok_tx).await });
+        tokio::spawn(async move { stream_provider.chat_stream(&messages, tok_tx).await });
 
     while let Some(token) = tok_rx.recv().await {
         let _ = msg_tx.send(Message::StudyToken(token));

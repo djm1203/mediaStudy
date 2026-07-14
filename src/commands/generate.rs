@@ -9,7 +9,6 @@ use crate::bucket;
 use crate::config::Config;
 use crate::embeddings;
 use crate::ingest::{ChunkConfig, chunk_text};
-use crate::llm::GroqClient;
 use crate::storage::{ChunkStore, Database, DocumentStore};
 
 /// Prompts for different generation types
@@ -125,19 +124,18 @@ pub async fn summary(topic: Option<String>) -> Result<()> {
 async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Result<()> {
     let config = Config::load()?;
 
-    let api_key = match config.get_api_key() {
-        Some(key) => key,
-        None => {
+    let provider = match config.resolve_provider() {
+        Ok(provider) => provider,
+        Err(e) => {
             println!(
-                "{} No API key configured. Run {} to set up.",
+                "{} {} Run {} to set up.",
                 "Error:".red().bold(),
+                e,
                 "librarian config".cyan()
             );
             return Ok(());
         }
     };
-
-    let client = GroqClient::new(api_key, config.default_model);
 
     // Get document context
     let context = get_document_context(topic)?;
@@ -189,12 +187,12 @@ async fn generate_content(name: &str, system_prompt: &str, topic: &str) -> Resul
         },
     ];
 
-    // Clear the "Working..." message and start streaming
+    // Clear the "Working..." message.
     print!("\r{}\r", " ".repeat(20));
     println!("\n{}", "─".repeat(50).dimmed());
     std::io::stdout().flush().ok();
 
-    match client.chat_stream(&messages).await {
+    match provider.chat(&messages).await {
         Ok(response) => {
             // Render formatted markdown version
             println!("\n{}", "─── Formatted Output ───".dimmed());
@@ -380,11 +378,10 @@ fn get_document_context(topic: &str) -> Result<String> {
         return Ok(String::new());
     }
 
-    // Dynamic context sizing based on model
+    // Dynamic context sizing based on the selected provider's model.
     let config = Config::load()?;
-    let max_context_chars = if let Some(key) = config.get_api_key() {
-        let client = GroqClient::new(key, config.default_model);
-        client
+    let max_context_chars = if let Ok(provider) = config.resolve_provider() {
+        provider
             .available_context_chars(500, 0, 8192)
             .clamp(2000, 30000)
     } else {
@@ -441,9 +438,8 @@ fn build_semantic_context(
 
     // Dynamic context sizing
     let config = Config::load()?;
-    let max_context_chars = if let Some(key) = config.get_api_key() {
-        let client = GroqClient::new(key, config.default_model);
-        client
+    let max_context_chars = if let Ok(provider) = config.resolve_provider() {
+        provider
             .available_context_chars(500, 0, 8192)
             .clamp(2000, 30000)
     } else {
