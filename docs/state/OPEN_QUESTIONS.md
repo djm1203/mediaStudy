@@ -52,5 +52,18 @@ Do we ship prebuilt binaries per platform (via `release.yml`), and for which tar
 
 What coverage do we want for the ingestion, storage, and retrieval paths? Today 15 unit tests cover
 pure functions in `src/search.rs`, `ingest/chunker.rs`, `ingest/ocr.rs`, `ingest/url.rs`, and
-`storage/study.rs` (SM-2 scheduler); the ingest I/O pipeline, storage CRUD, embeddings, the LLM/Whisper
-clients, and the command handlers are untested. Which paths are highest priority to cover first?
+`storage/study.rs` (SM-2 scheduler); the ingest I/O pipeline, storage CRUD, embeddings, the provider
+adapters, and the TUI are untested. Which paths are highest priority to cover first? (E2 added
+OpenAI/Anthropic/Ollama adapters that have not been run against live APIs — mock-HTTP tests are B-002.)
+
+## OQ-5: Provider defaults & scope (E2 follow-ups)
+
+**Blocking:** No
+**Target:** Project owner
+**Status:** Open
+
+Provider selection is currently global (in `config.toml` / the TUI Config pane), defaulting to Groq.
+(a) Do we want a **per-bucket** provider/model override? (b) Should first run **auto-detect** the
+provider from whichever API key is present rather than defaulting to Groq? (c) `reqwest 0.13` (B-025)
+was deferred because it swaps the default TLS backend to rustls+aws-lc (adds cmake/nasm build deps) —
+do we migrate with an explicit non-aws-lc TLS backend, or stay on 0.12?
