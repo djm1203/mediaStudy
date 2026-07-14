@@ -127,4 +127,30 @@ This is the first v1.0 epic to execute (E3 / B-017, B-018).
 **Alternatives:** Polish the existing line-based inquire flow; phased (polish now, ratatui later).
 
 **Consequences:** Biggest visual/UX payoff and a clean structural split from `main.rs`; larger
-implementation effort and a new UI dependency (ratatui/crossterm).
+implementation effort and a new UI dependency (ratatui/crossterm). *(Implemented on `v1-foundation`,
+E3 Phases 0–3.)*
+
+## D-10: Enum-dispatched providers (not `dyn`/`async-trait`)
+
+**Context (2026-07-13, E2):** Native `async fn` in traits isn't `dyn`-safe, and the provider set is
+small and fixed.
+
+**Decision:** Model providers as `enum Provider { OpenAiCompat(..), Anthropic(..) }` with native
+`async fn` methods (`src/llm/provider.rs`) instead of boxed trait objects. One OpenAI-compatible client
+covers Groq/OpenAI/Ollama; Anthropic is separate. Providers are constructed via `Config::resolve_provider()`.
+
+**Alternatives:** `async-trait` + `Box<dyn LlmProvider>`; a macro-based dispatch.
+
+**Consequences:** No extra dependency, no boxing, simple matching; adding a provider with a genuinely
+different shape means a new enum variant + arms rather than an impl. Fine for a fixed, small set.
+
+## D-11: The full TUI (E3) has no automated regression test
+
+**Context:** A full-screen ratatui app can't be meaningfully exercised by `cargo test` in CI.
+
+**Decision:** Rely on compile + clippy + the pure-logic unit tests for the TUI, and on a human
+`cargo run` pass for visual/interaction verification. Keep pure logic (parsing, wrapping, SM-2, RAG
+context building) in testable functions outside the render path.
+
+**Consequences:** Rendering/keybinding regressions can slip past CI; a manual smoke pass is part of the
+DoD for TUI changes. Consider a headless snapshot-test harness later if churn warrants it.

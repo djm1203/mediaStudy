@@ -14,27 +14,47 @@ author: Derek Martinez
 
 ## Where We Stopped
 
-Populated the BEACON state and architecture/governance docs to reflect The Librarian's actual
-architecture and current state (replacing the generic onboarding placeholders) and fact-checked them
-against source. Then assessed the project and defined the production-readiness roadmap: 9 epics with
-v1.0 = E1/E2/E3/E6/E7/E9 (see `docs/planning/BACKLOG.md` + `EXECUTION_PLAN.md`, decisions D-7/D-8/D-9).
-Product direction is fixed: **local-first CLI, pluggable LLM providers, full-screen ratatui TUI.**
+All work is on branch **`v1-foundation`** (11 commits ahead of `main`, pushed to origin). This session
+delivered, all green (build · clippy `-D warnings` · fmt · 15 tests) and committed:
+**E9** (deps modernized), **E7/B-003** (release-pipeline fix), **E6/B-004** (cargo-audit CI job),
+**E3** (the full 9-screen ratatui TUI — `inquire` and the legacy menu removed), and **E2** (pluggable
+LLM/transcription providers). Product direction (fixed, D-7/D-8/D-9): **local-first CLI, pluggable
+providers, full-screen ratatui TUI.** Roadmap + statuses in `docs/planning/BACKLOG.md`.
 
-## What's Next — v1.0 build (autonomous, parallel agents)
+### Architecture landmarks (read before touching these)
+- **TUI** (`src/tui/`): async loop in `mod.rs` (two mpsc channels: `Action` in, `Message` out);
+  `app.rs` delegates to per-screen modules via the `Pane` trait (`ui/pane.rs`); `ui/<screen>.rs` +
+  `service/<screen>.rs` per pane; `action.rs` holds the `Action`/`Message` contract. **Invariant: all
+  `rusqlite`/`fastembed` work runs inside `tokio::task::spawn_blocking` opening its own `Database::open()`
+  — never hold a `Connection` across `.await`.** TUI can't be verified by automated tests (needs a real
+  terminal) — verify visually with `cargo run`.
+- **Providers** (`src/llm/provider.rs`): enum-dispatched `Provider` (no dyn/async-trait). Build one via
+  `Config::resolve_provider()`; transcription via `Config::resolve_transcriber()`. `Config` fields:
+  `provider`, `groq_api_key`/`openai_api_key`/`anthropic_api_key`, `ollama_url`, `default_model`.
+- **RAG helpers the TUI reuses** (kept `pub`): `chat::{build_semantic_context,build_fts_context}`,
+  `generate::{prompts,get_document_context_pub,parse_qa_pairs}`, `quiz::{QuizQuestion,parse_quiz_questions}`,
+  `search::{enhance_query,deduplicate_chunks}`.
 
-Order: foundation first, then **E3 → E2 → E1**, with E6 (tests) continuous.
+## What's Next (resume order)
 
-1. **Foundation:** E9/B-024 dependency modernization (`cargo upgrade`, verify build/tests), E7/B-003
-   fix the release pipeline binary name (`librarian`, not `media-study`), E6/B-004 add `cargo audit` to CI.
-2. **E3 — full-screen ratatui TUI (first feature epic, B-017/B-018):** add `ratatui`+`crossterm`,
-   extract a new `src/tui/` module from `main.rs`, build the multi-pane app (library sidebar / content
-   pane / status bar), streaming chat view, live search, ingestion dashboard, interactive study modes,
-   theme + keybinding system. Keep `librarian <cmd>` subcommands intact for scripting.
-3. **E2 — pluggable providers (B-015/B-005/B-016):** `LlmProvider`/`Transcriber` traits, Groq/OpenAI/
-   Anthropic/Ollama adapters, retry/backoff, streaming.
-4. **E1 — RAG quality (B-011/B-012/B-001/B-007/B-013/B-014):** structured per-chunk citations, hybrid
-   rerank, `chunks_fts`, vector index, structure-aware chunking, retrieval eval harness.
-5. **E6 — testing (B-002/B-009):** fill test gaps as each epic lands; keep docs in sync.
+1. **E1 — RAG quality:** **B-011** structured per-chunk citations (today it's only a prompt asking the
+   model to write `[Source: filename]` — make it verifiable: carry `document_id`+`chunk_index` and show a
+   sources view; the chat/study `Message::ChatDone` path is where to thread it). **B-012** hybrid reranker
+   (RRF over the semantic + keyword arms). **B-001** add a `chunks_fts` FTS5 table for the keyword arm
+   (`chunks.search_content` is `LIKE` today; `documents_fts` already shows the FTS5 pattern). **B-007**
+   vector index (evaluate `sqlite-vec`) to replace the brute-force cosine in `embeddings::find_similar`.
+   **B-013** structure-aware chunking. **B-014** retrieval eval harness in CI.
+2. **E6 — B-002:** tests for ingest I/O, storage CRUD, embeddings, and the `provider` adapters (mock HTTP).
+3. **E7 — B-006/B-023:** cross-platform prebuilt binaries on GitHub releases + crates.io + self-update.
+4. **v1.1:** E4 (ingestion robustness), E5 (export/import + schema migrations, B-021), E8 (first-run
+   wizard, `librarian doctor`, Homebrew/Scoop/AUR).
+- **Loose ends:** **B-009** docs/README drift — default chat model is `openai/gpt-oss-120b` (not
+  `llama-3.3-70b-versatile`), and the README still describes the old `inquire` menu; **B-025** `reqwest
+  0.13` (deferred: it swaps TLS to rustls+aws-lc → cmake/nasm build deps); per-bucket provider override.
+
+How to work: autonomous, parallel agents where independent, with a serial contract/refactor step first
+when agents would touch shared files (the pattern used for the TUI panes and the provider layer). Green
+gate + commit at every milestone.
 
 ## Quick Reference
 
@@ -55,9 +75,11 @@ cargo fmt
 cargo fmt --check
 ```
 
-Runtime requirements: `GROQ_API_KEY` env var or `groq_api_key` in `config.toml` (OS data dir,
-app name "librarian", migrated automatically from the legacy "media-study" directory). Optional binaries: FFmpeg (audio/video), Tesseract (OCR). First run
-downloads the ~90MB embedding model.
+Runtime: pick a provider in the TUI Config screen (or `provider` + a `*_api_key` in `config.toml`).
+Default is Groq (`GROQ_API_KEY` env or `groq_api_key`); OpenAI/Anthropic/Ollama also supported (Ollama
+needs no key). Config/data live under the OS "librarian" dir (auto-migrated from legacy "media-study").
+Optional binaries: FFmpeg (audio/video), Tesseract (OCR). First run downloads the ~90MB embedding model.
+Run the TUI with `cargo run` (no args); `librarian <cmd> <args>` stays headless for scripting.
 
 ## What to Watch
 

@@ -35,22 +35,24 @@ author: Derek Martinez
   - Grounded chat over retrieved context (Groq).
   - Study-material generation: study guides, flashcards, quizzes, summaries, homework help.
   - Spaced-repetition review flow.
-  - Interactive TUI (clap CLI + inquire menu/banner/dashboard, termimad rendering).
-- CI pipeline live (`.github/workflows/ci.yml`: check, fmt --check, clippy -D warnings, test on ubuntu; `release.yml` present).
-- Onboarded to BEACON Framework.
+- CI pipeline live (`.github/workflows/ci.yml`: check, fmt --check, clippy -D warnings, test, **cargo audit** on ubuntu; `release.yml`).
+- Onboarded to BEACON Framework; full doc set populated + fact-checked.
+
+## Done this session (branch `v1-foundation`, 11 commits, all green)
+
+- **E9** — dependency modernization: all lagging crates bumped to current majors (`thiserror 2`, `dirs 6`, `rusqlite 0.40`, `colored 3`, `toml 1`, `fastembed 5`, `pdf-extract 0.12`, `lopdf 0.44`, `indicatif 0.18`, `termimad 0.35`, `scraper 0.27`, `html2text 0.17`). `Cargo.lock` now committed.
+- **E7/B-003** — fixed `release.yml` (binary `librarian`, `action-gh-release@v2`). **E6/B-004** — `cargo audit` CI job.
+- **E3 — full ratatui TUI (DONE):** `src/tui/` with an async event/render loop, `Action`/`Message` plumbing, `Pane` trait + per-screen modules, service/worker layers (all DB/embedding in `spawn_blocking`), and all 9 screens (Home, Chat, Search, Docs, Add/ingest, Study, Quiz, Review, Config). `inquire` and the legacy line-based menu removed; arg-less subcommands open the TUI, arg-provided paths stay headless.
+- **E2 — pluggable providers (DONE):** enum-dispatched `Provider` (OpenAI-compat covers Groq/OpenAI/Ollama + Anthropic), retry/backoff, `Config` provider selection + TUI Config-pane selector, generalized `Transcriber` (Groq/OpenAI Whisper). Groq stays default; backward compatible.
 
 ## In Flight
 
-- BEACON governance/state docs populated and fact-checked against source (this session).
-- Production-readiness roadmap defined: 9 epics, v1.0 = E1/E2/E3/E6/E7/E9. See `docs/planning/BACKLOG.md` + `EXECUTION_PLAN.md`.
+- None — stopped at a clean, committed, pushed checkpoint (E3 + E2 done). Session closing.
 
-## Next (v1.0 build — autonomous, parallel agents)
+## Next (resume here — v1.0 remainder, then v1.1)
 
-Execution order: foundation (E9 dep upgrades, E7/B-003 fix release, E6 cargo audit) → **E3 first**, then E2, then E1; E6 continuous.
-
-1. **E3 — full-screen ratatui TUI** (B-017/B-018): extract `src/tui/`, multi-pane library/content/status, streaming chat, live search, ingestion dashboard, interactive study modes. *First epic to execute.*
-2. **E9 — dependency modernization** (B-024): upgrade lagging crates before/with adding ratatui.
-3. **E7 — fix release pipeline** (B-003): binary is `librarian`, not `media-study`.
-4. **E2 — pluggable providers** (B-015/B-005/B-016): trait layer, Groq/OpenAI/Anthropic/Ollama, retries, streaming.
-5. **E1 — RAG quality** (B-011 structured citations, B-012 rerank, B-001 chunks_fts, B-007 vector index, B-013 chunking, B-014 eval harness).
-6. **E6 — testing** (B-002/B-004/B-009), continuous.
+1. **E1 — RAG quality:** B-011 structured per-chunk citations (chat/study currently do prompt-instructed `[Source: filename]` only), B-012 hybrid reranker (RRF), B-001 `chunks_fts` FTS5 for the keyword arm, B-007 vector index (evaluate `sqlite-vec`), B-013 structure-aware chunking, B-014 retrieval eval harness.
+2. **E6 — B-002:** real test coverage for ingest I/O, storage CRUD, embeddings, and the new `provider` adapters (mock HTTP).
+3. **E7 — B-006/B-023:** cross-platform prebuilt release binaries + crates.io publish + self-update.
+4. **v1.1:** E4 (ingestion robustness), E5 (export/import + schema migrations), E8 (first-run wizard, `doctor`, packaging).
+- **Loose ends:** B-009 doc-sync (default model is `openai/gpt-oss-120b` not `llama-3.3-70b-versatile`; update README for the TUI + provider support); B-025 `reqwest 0.13` (deferred — TLS/build-dep change); per-bucket provider override; a human visual pass of the TUI is still advisable.
