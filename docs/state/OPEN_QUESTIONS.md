@@ -12,19 +12,16 @@ author: Derek Martinez
 
 # Open Questions — The Librarian
 
-## OQ-1: Promote chunk keyword search to FTS5?
+## OQ-1: Promote chunk keyword search to FTS5? — RESOLVED (2026-07-14)
 
 **Blocking:** No
 **Target:** Project owner
-**Status:** Open
+**Status:** Resolved — **Yes, done (B-001).**
 
-Document-level full-text search already uses a real FTS5 virtual table (`documents_fts`, created in
-`src/storage/db.rs:71` with sync triggers, queried via `MATCH` in `src/storage/documents.rs:88`), so
-the README's FTS5 description is accurate. The one nuance: the hybrid retriever's chunk-level keyword
-arm `src/storage/chunks.rs::search_content` uses SQL `LIKE '%kw%'` rather than a dedicated chunk FTS
-index. Do we promote that arm to its own `chunks_fts` FTS5 table (mirroring `documents_fts`, with sync
-triggers) for better keyword relevance/perf at scale? This is an enhancement decision, not a doc/code
-contradiction.
+Resolved by shipping a `chunks_fts` FTS5 external-content table (mirroring `documents_fts`) with
+insert/update/delete sync triggers and a one-time backfill, plus a ranked `search_content_fts`. The
+hybrid retriever (`src/retrieval.rs`) now fuses this keyword arm with the semantic arm via Reciprocal
+Rank Fusion (B-012). The old `LIKE` arm remains as a fallback only.
 
 ## OQ-2: Target library scale — do we need an ANN/vector index?
 
@@ -34,6 +31,10 @@ contradiction.
 
 Retrieval currently brute-force cosine-scans every chunk embedding. What per-bucket size do we
 expect to support? Above what scale should we introduce an ANN index (HNSW/IVF) or sqlite-vss?
+
+**Note (2026-07-14):** B-007 evaluated this and **deferred** the ANN index pending this answer
+(DECISIONS D-12) — `sqlite-vec` adds C/build-toolchain friction and current scale is small. The B-014
+eval harness now measures retrieval quality, so a future index swap can be validated against it.
 
 ## OQ-3: Release and distribution plan
 
@@ -50,11 +51,15 @@ Do we ship prebuilt binaries per platform (via `release.yml`), and for which tar
 **Target:** Project owner
 **Status:** Open
 
-What coverage do we want for the ingestion, storage, and retrieval paths? Today 15 unit tests cover
-pure functions in `src/search.rs`, `ingest/chunker.rs`, `ingest/ocr.rs`, `ingest/url.rs`, and
-`storage/study.rs` (SM-2 scheduler); the ingest I/O pipeline, storage CRUD, embeddings, the provider
-adapters, and the TUI are untested. Which paths are highest priority to cover first? (E2 added
-OpenAI/Anthropic/Ollama adapters that have not been run against live APIs — mock-HTTP tests are B-002.)
+What coverage do we want for the ingestion, storage, and retrieval paths?
+
+**Update (2026-07-14, B-002):** coverage is now **40 tests** — storage CRUD + FTS sync (documents &
+chunks), hybrid retrieval + structured citations, the B-014 eval harness, the structure-aware chunker,
+and the provider adapters via a tokio mock-HTTP server (happy/retry/error) + pure logic. Still
+untested: the embedding-model I/O (needs the ~90MB model), media ingest I/O (PDF/OCR/transcription need
+external tools/network), and the TUI render path (D-11 — verified manually). Do we want an explicit
+coverage target (e.g. a % gate or a required-paths checklist) as a DoD item, and should CI run a
+gated integration job that downloads the embedding model?
 
 ## OQ-5: Provider defaults & scope (E2 follow-ups)
 

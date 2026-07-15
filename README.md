@@ -18,19 +18,23 @@ Your personal AI study companion. Ingest PDFs, lecture recordings, notes, and we
 
 - **Multi-format ingestion**: PDFs, text files, Markdown, audio, video, images (OCR), web articles, YouTube videos
 - **Library organization**: Organize materials into separate "books" (buckets) per class/project
-- **Semantic search**: Local vector embeddings (all-MiniLM-L6-v2) with cosine similarity
+- **Hybrid retrieval**: Local vector embeddings (all-MiniLM-L6-v2, cosine similarity) fused with an FTS5 keyword index via Reciprocal Rank Fusion, with structure-aware chunking
+- **Verifiable citations**: Grounded answers cite numbered sources that map back to a specific document and chunk, shown in a "Sources" view
+- **Pluggable providers**: Groq (default), OpenAI, Anthropic, or a local **Ollama** server for fully offline chat — selectable in the TUI Config screen
 - **Study tools**: Generate study guides, flashcards, quizzes, and summaries - saved to your library
 - **Interactive chat**: Ask "The Librarian" questions grounded in your ingested materials
-- **Homework help**: Guided problem-solving mode
-- **Beautiful CLI**: Polished terminal UI with visual library shelf and status dashboard
+- **Full-screen TUI**: A ratatui terminal UI (Home, Chat, Search, Docs, Add, Study, Quiz, Review, Config) with streaming chat; `librarian <cmd> <args>` stays headless for scripting
 - **Cross-platform**: Works on Windows, macOS, and Linux
-- **Privacy-first**: Embeddings generated locally, only LLM queries sent to API
+- **Privacy-first**: Embeddings generated locally; only LLM queries leave the machine (and nothing does with an Ollama provider)
 
 ## Prerequisites
 
 ### Required
 - **Rust**: Install from [rustup.rs](https://rustup.rs/)
-- **Groq API Key**: Sign up free at [console.groq.com](https://console.groq.com/)
+- **An LLM provider** (for chat, generation, and transcription):
+  - **Groq API Key** (default) — sign up free at [console.groq.com](https://console.groq.com/), or
+  - an **OpenAI** or **Anthropic** API key, or
+  - a local **[Ollama](https://ollama.com/)** server for offline chat/generation (no key needed; transcription still needs Groq/OpenAI)
 
 ### Optional (for specific media types)
 
@@ -40,6 +44,18 @@ Your personal AI study companion. Ingest PDFs, lecture recordings, notes, and we
 | **Tesseract** | Image/screenshot OCR | See [installation](#installing-optional-dependencies) |
 
 ## Installation
+
+### One-line install (Linux/macOS)
+
+Grab the latest prebuilt binary from GitHub releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/djm1203/mediaStudy/main/install.sh | sh
+```
+
+It installs to `~/.local/bin` (override with `LIBRARIAN_INSTALL_DIR`). On Windows, download
+the `.zip` from the [releases page](https://github.com/djm1203/mediaStudy/releases/latest).
+Check for newer versions any time with `librarian update`.
 
 ### From Source (Recommended)
 
@@ -101,13 +117,17 @@ librarian generate
 
 ### Interactive Mode (Recommended)
 
-Just run `librarian` with no arguments for the beautiful interactive menu:
+Just run `librarian` with no arguments to launch the full-screen TUI:
 
 ```bash
 librarian
 ```
 
-You'll see your library shelf with all your books, a status dashboard, and menu options.
+You land on the Home screen with your library sidebar and a status dashboard. Navigate
+screens with number keys `1`–`9` (Home, Chat, Search, Docs, Add, Study, Quiz, Review,
+Config), `Tab` to move focus, `?` for help, `Ctrl-T` to toggle light/dark, and `q` to quit.
+Running a subcommand with no argument (e.g. `librarian chat`, `librarian search`) opens that
+screen directly; passing an argument keeps it headless for scripting.
 
 ### Commands
 
@@ -119,12 +139,13 @@ librarian search <query>           # Search documents
 librarian docs                     # Manage documents (view/delete)
 
 # Study Tools
-librarian chat                     # Interactive Q&A with your materials
+librarian chat                     # Interactive Q&A with your materials (TUI)
 librarian generate study-guide     # Generate comprehensive study guide
 librarian generate flashcards      # Generate flashcards
 librarian generate quiz            # Generate practice quiz
 librarian generate summary         # Generate summary
-librarian generate homework        # Interactive homework help
+librarian review                   # Spaced-repetition review session (TUI)
+librarian quiz                     # Interactive quiz (TUI)
 
 # Library Organization
 librarian bucket create <name>     # Create a new book
@@ -134,8 +155,9 @@ librarian bucket delete <name>     # Delete a book
 librarian library                  # Alias for bucket management
 
 # Configuration
-librarian config                   # Configure API key and settings
+librarian config                   # Configure provider, API key, and model (TUI)
 librarian completions <shell>      # Generate shell completions
+librarian update                   # Check for a newer release
 ```
 
 ### Adding Content
@@ -170,18 +192,26 @@ librarian add lecture-recording.mp4
 
 ## Configuration
 
-Configuration is stored at:
-- **Linux**: `~/.config/media-study/config.toml`
-- **macOS**: `~/Library/Application Support/media-study/config.toml`
-- **Windows**: `%APPDATA%\media-study\config.toml`
+Configuration is stored at (auto-migrated from the legacy `media-study` directory):
+- **Linux**: `~/.config/librarian/config.toml`
+- **macOS**: `~/Library/Application Support/librarian/config.toml`
+- **Windows**: `%APPDATA%\librarian\config.toml`
+
+Pick a provider and set the matching key (easiest via the TUI **Config** screen). Example:
 
 ```toml
-groq_api_key = "gsk_..."
-default_model = "llama-3.3-70b-versatile"
+provider = "groq"                       # groq | openai | anthropic | ollama
+default_model = "openai/gpt-oss-120b"    # optional; omit to use the provider default
 current_bucket = "psc-4395"
+
+# Only the key for your chosen provider is needed:
+groq_api_key = "gsk_..."
+# openai_api_key = "sk-..."
+# anthropic_api_key = "sk-ant-..."
+# ollama_url = "http://localhost:11434/v1"   # Ollama needs no key
 ```
 
-Environment variable alternative:
+Environment variable alternative (Groq):
 ```bash
 export GROQ_API_KEY="gsk_..."
 ```
@@ -213,37 +243,41 @@ librarian completions powershell >> $PROFILE
 └─────────────┘     └──────────────┘     └─────────────┘
                                                 │
 ┌─────────────┐     ┌──────────────┐     ┌──────▼──────┐
-│  Response   │◀────│   Groq LLM   │◀────│  Semantic   │
-│  (Grounded) │     │   + Context  │     │   Search    │
+│  Response   │◀────│  LLM provider│◀────│   Hybrid    │
+│ (+ Sources) │     │   + Context  │     │  Retrieval  │
 └─────────────┘     └──────────────┘     └─────────────┘
 ```
 
 1. **Ingestion**: Extract text from various formats (PDF parsing, Whisper transcription, OCR)
-2. **Chunking**: Split into ~1000 char chunks with 200 char overlap for context
+2. **Chunking**: Structure-aware split (respects headings/paragraphs) targeting ~1000 chars with 200-char overlap
 3. **Embedding**: Generate 384-dim vectors locally using all-MiniLM-L6-v2
-4. **Storage**: SQLite database per book (bucket) with FTS5 full-text search
-5. **Search**: Cosine similarity search on query embedding to find relevant chunks
-6. **Generation**: Send top relevant chunks as context to Groq LLM for grounded responses
+4. **Storage**: SQLite database per book (bucket) with FTS5 full-text search on both documents and chunks
+5. **Retrieval**: Hybrid search — semantic (cosine) + keyword (FTS5) arms fused with Reciprocal Rank Fusion
+6. **Generation**: Send the top-ranked chunks as numbered context to the selected LLM provider; the answer cites those sources
 
 ## Models Used
 
 | Purpose | Model | Notes |
 |---------|-------|-------|
 | Embeddings | all-MiniLM-L6-v2 | Local, ~90MB download on first run |
-| Transcription | whisper-large-v3 | Via Groq API, for audio/video |
-| Chat/Generation | llama-3.3-70b-versatile | High quality (default) |
-| Alternative | llama-3.1-8b-instant | Faster, lower latency |
+| Transcription | whisper-large-v3-turbo | Via Groq/OpenAI (default; `whisper-large-v3` for most accurate) |
+| Chat/Generation (Groq, default) | `openai/gpt-oss-120b` | Provider default; any Groq model works |
+| Chat/Generation (OpenAI) | `gpt-4o-mini` | Provider default |
+| Chat/Generation (Anthropic) | `claude-sonnet-5` | Provider default |
+| Chat/Generation (Ollama) | `llama3.1` | Local/offline default |
+
+Set `default_model` in `config.toml` (or the TUI Config screen) to override any provider's default.
 
 ## Data Storage
 
-Data is stored at:
-- **Linux**: `~/.local/share/media-study/`
-- **macOS**: `~/Library/Application Support/media-study/`
-- **Windows**: `%APPDATA%\media-study\`
+Data is stored at (auto-migrated from the legacy `media-study` directory):
+- **Linux**: `~/.local/share/librarian/`
+- **macOS**: `~/Library/Application Support/librarian/`
+- **Windows**: `%APPDATA%\librarian\`
 
 Structure:
 ```
-media-study/
+librarian/
 ├── config.toml              # Configuration
 ├── default.db               # Default database (no bucket)
 └── buckets/
@@ -259,30 +293,34 @@ media-study/
 
 ```
 src/
-├── main.rs           # CLI entry point & interactive UI
-├── config.rs         # Configuration management
+├── main.rs           # CLI entry point (headless subcommands + TUI launch)
+├── config.rs         # Configuration + provider/transcriber resolution
+├── retrieval.rs      # Hybrid search (RRF) + structured citations
+├── eval.rs           # Retrieval evaluation harness (recall@k / MRR)
+├── search.rs         # Query enhancement + chunk dedup helpers
 ├── bucket/           # Library/bucket isolation
-├── commands/         # CLI command implementations
+├── commands/         # Headless command implementations + shared RAG helpers
 │   ├── add.rs        # Content ingestion
-│   ├── chat.rs       # Interactive chat
+│   ├── chat.rs       # Chat context builders (shared with the TUI)
 │   ├── generate.rs   # Study material generation
 │   ├── docs.rs       # Document management
-│   ├── bucket.rs     # Bucket management
-│   └── config.rs     # Settings UI
+│   └── bucket.rs     # Bucket management
 ├── embeddings/       # Local embedding generation (FastEmbed)
 ├── ingest/           # Media ingestion
 │   ├── pdf.rs        # PDF extraction
 │   ├── text.rs       # Text/Markdown
 │   ├── url.rs        # Web scraping & YouTube
 │   ├── ocr.rs        # Image OCR (Tesseract)
-│   └── chunker.rs    # Text chunking
+│   └── chunker.rs    # Structure-aware text chunking
 ├── llm/              # LLM clients
-│   ├── groq.rs       # Groq chat API
-│   └── whisper.rs    # Groq Whisper transcription
+│   ├── provider.rs   # Pluggable provider layer (Groq/OpenAI/Anthropic/Ollama)
+│   ├── groq.rs       # Groq chat API + shared Message type
+│   └── whisper.rs    # Whisper transcription
+├── tui/              # Full-screen ratatui TUI (panes, services, async worker)
 └── storage/          # SQLite storage layer
-    ├── db.rs         # Database connection
-    ├── documents.rs  # Document CRUD
-    └── chunks.rs     # Chunk/embedding storage
+    ├── db.rs         # Database connection + schema
+    ├── documents.rs  # Document CRUD + FTS5
+    └── chunks.rs     # Chunk/embedding storage + chunks_fts (FTS5)
 ```
 
 ## Development
@@ -378,7 +416,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [Groq](https://groq.com/) - Ultra-fast LLM inference
 - [FastEmbed](https://github.com/Anush008/fastembed-rs) - Local embeddings in Rust
 - [clap](https://github.com/clap-rs/clap) - Command-line argument parsing
-- [inquire](https://github.com/mikaelmello/inquire) - Beautiful interactive prompts
+- [ratatui](https://github.com/ratatui/ratatui) + [crossterm](https://github.com/crossterm-rs/crossterm) - Full-screen terminal UI
 - [colored](https://github.com/colored-rs/colored) - Terminal colors
 - [indicatif](https://github.com/console-rs/indicatif) - Progress bars
 

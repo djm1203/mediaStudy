@@ -12,18 +12,20 @@ author: Derek Martinez
 
 # Status — The Librarian
 
-**Last updated:** 2026-07-13T00:00:00Z
+**Last updated:** 2026-07-14T00:00:00Z
 
 ## Project Snapshot
 
 - **Product:** The Librarian — a local-first RAG "personal AI study companion" CLI.
 - **Crate/binary:** `the-librarian` v0.1.0 / binary `librarian`.
-- **Language:** Rust (edition 2024), ~6,725 LOC in `src/`.
-- **Build system:** Cargo (`cargo build --release`, LTO + strip).
-- **Storage:** SQLite (rusqlite, bundled) — one DB per "bucket" (book/class).
+- **Language:** Rust (edition 2024), ~7,600 LOC in `src/`.
+- **Build system:** Cargo (`cargo build --release`, LTO + strip); `build.rs` embeds git SHA + date into `--version`.
+- **Storage:** SQLite (rusqlite, bundled) — one DB per "bucket" (book/class); `PRAGMA user_version` schema versioning (v1).
 - **Embeddings:** local fastembed ONNX `all-MiniLM-L6-v2` (384-dim); ~90MB model downloaded on first run.
-- **LLM:** Groq API — `llama-3.3-70b-versatile` (default) / `llama-3.1-8b-instant` (alt) for chat/generation, `whisper-large-v3-turbo` (default; `whisper-large-v3` for most accurate) for transcription.
+- **Retrieval:** hybrid — semantic cosine + `chunks_fts` FTS5 keyword, fused with Reciprocal Rank Fusion; structured citations.
+- **LLM:** pluggable provider (Groq default: `openai/gpt-oss-120b`; OpenAI/Anthropic/Ollama also supported), `whisper-large-v3-turbo` (default) for transcription.
 - **Optional external tools:** FFmpeg (audio/video), Tesseract (OCR).
+- **Tests:** 40 (all green), incl. hermetic on-disk-SQLite + tokio mock-HTTP provider tests.
 
 ## Done
 
@@ -38,21 +40,35 @@ author: Derek Martinez
 - CI pipeline live (`.github/workflows/ci.yml`: check, fmt --check, clippy -D warnings, test, **cargo audit** on ubuntu; `release.yml`).
 - Onboarded to BEACON Framework; full doc set populated + fact-checked.
 
-## Done this session (branch `v1-foundation`, 11 commits, all green)
+## Done previous session (branch `v1-foundation`, 11 commits, all green)
 
 - **E9** — dependency modernization: all lagging crates bumped to current majors (`thiserror 2`, `dirs 6`, `rusqlite 0.40`, `colored 3`, `toml 1`, `fastembed 5`, `pdf-extract 0.12`, `lopdf 0.44`, `indicatif 0.18`, `termimad 0.35`, `scraper 0.27`, `html2text 0.17`). `Cargo.lock` now committed.
 - **E7/B-003** — fixed `release.yml` (binary `librarian`, `action-gh-release@v2`). **E6/B-004** — `cargo audit` CI job.
 - **E3 — full ratatui TUI (DONE):** `src/tui/` with an async event/render loop, `Action`/`Message` plumbing, `Pane` trait + per-screen modules, service/worker layers (all DB/embedding in `spawn_blocking`), and all 9 screens (Home, Chat, Search, Docs, Add/ingest, Study, Quiz, Review, Config). `inquire` and the legacy line-based menu removed; arg-less subcommands open the TUI, arg-provided paths stay headless.
 - **E2 — pluggable providers (DONE):** enum-dispatched `Provider` (OpenAI-compat covers Groq/OpenAI/Ollama + Anthropic), retry/backoff, `Config` provider selection + TUI Config-pane selector, generalized `Transcriber` (Groq/OpenAI Whisper). Groq stays default; backward compatible.
 
+## Done this session (branch `v1-foundation`, uncommitted — all green: build · clippy `--all-targets -D warnings` · fmt · 40 tests)
+
+- **E1 — RAG quality (COMPLETE):** B-001 `chunks_fts` FTS5 keyword arm (+ backfill), B-012 RRF fusion,
+  B-011 structured verifiable citations + a TUI "Sources" view, B-013 structure-aware chunking, B-014
+  retrieval eval harness. B-007 (ANN index) **evaluated & deferred** (D-12, pending OQ-2).
+- **E6 (COMPLETE for v1.0):** B-002 tests 15 → 40 (storage CRUD/FTS, hybrid retrieval + citations,
+  eval, chunker, provider adapters via tokio mock HTTP); B-009 README/`--help` drift fixed.
+- **E7 (COMPLETE for v1.0):** B-006 `build.rs` version metadata + `install.sh`; B-023 crates.io metadata
+  + manual `publish.yml` + `librarian update` self-update check.
+
 ## In Flight
 
-- None — stopped at a clean, committed, pushed checkpoint (E3 + E2 done). Session closing.
+- None — stopped at a clean (uncommitted) checkpoint, all green. **Not yet committed** (per R-10.5,
+  awaiting explicit go-ahead). The pending changeset covers E1 + E6 + E7 above.
 
-## Next (resume here — v1.0 remainder, then v1.1)
+## Next (resume here)
 
-1. **E1 — RAG quality:** B-011 structured per-chunk citations (chat/study currently do prompt-instructed `[Source: filename]` only), B-012 hybrid reranker (RRF), B-001 `chunks_fts` FTS5 for the keyword arm, B-007 vector index (evaluate `sqlite-vec`), B-013 structure-aware chunking, B-014 retrieval eval harness.
-2. **E6 — B-002:** real test coverage for ingest I/O, storage CRUD, embeddings, and the new `provider` adapters (mock HTTP).
-3. **E7 — B-006/B-023:** cross-platform prebuilt release binaries + crates.io publish + self-update.
-4. **v1.1:** E4 (ingestion robustness), E5 (export/import + schema migrations), E8 (first-run wizard, `doctor`, packaging).
-- **Loose ends:** B-009 doc-sync (default model is `openai/gpt-oss-120b` not `llama-3.3-70b-versatile`; update README for the TUI + provider support); B-025 `reqwest 0.13` (deferred — TLS/build-dep change); per-bucket provider override; a human visual pass of the TUI is still advisable.
+1. **Commit** the E1/E6/E7 changeset (awaiting the owner's word), then push.
+2. **v1.1 epics:** E4 (B-019 content-hash dedup + resumable/batch imports; B-008 PDF/OCR robustness),
+   E5 (B-020 export/import + `stats`; B-021 schema migrations — `user_version` groundwork is in), E8
+   (B-022 first-run wizard + `doctor`; B-010 Homebrew/Scoop/AUR).
+3. **B-018** — TUI theme/input polish (configurable accent, mouse). MEDIUM; needs a visual `cargo run`
+   pass, so left for an interactive session (D-11).
+- **Loose ends:** B-025 `reqwest 0.13` (deferred — TLS/build-dep change); per-bucket provider override;
+  a human visual pass of the TUI + a live request per provider is still advisable before tagging v1.0.

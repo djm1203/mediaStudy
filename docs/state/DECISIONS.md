@@ -75,6 +75,11 @@ deduplication (>80% word overlap).
 
 **Consequences:** Better recall on both paraphrase and exact references; more moving parts to tune.
 
+**Update (2026-07-14, E1):** The keyword arm is now an FTS5 `chunks_fts` index (B-001), and the two
+arms are merged with **Reciprocal Rank Fusion** in `src/retrieval.rs` (B-012) rather than
+keyword-then-semantic concatenation. The retriever also emits structured, verifiable citations
+(document_id + chunk_index, B-011). Retrieval quality is now measurable via the B-014 eval harness.
+
 ## D-6: Embeddings stored as BLOBs, brute-force cosine scan
 
 **Context:** At current per-bucket scale, exact nearest-neighbor over all chunks is fast enough.
@@ -154,3 +159,37 @@ context building) in testable functions outside the render path.
 
 **Consequences:** Rendering/keybinding regressions can slip past CI; a manual smoke pass is part of the
 DoD for TUI changes. Consider a headless snapshot-test harness later if churn warrants it.
+
+## D-12: Defer the ANN/vector index; keep brute-force cosine (B-007)
+
+**Context (2026-07-14, E1):** B-007 asked to evaluate an ANN/vector index (sqlite-vec / usearch /
+HNSW) to replace the O(N) cosine scan in `embeddings::find_similar`.
+
+**Decision:** **Defer** the ANN index. Keep the brute-force scan for now. The dominant option,
+`sqlite-vec`, is a C extension that adds a build-toolchain requirement (raising build-from-source
+friction, especially on Windows — the same class of concern that deferred `reqwest 0.13`/B-025), and
+the target library scale (OQ-2) is still unanswered by the owner. At current single-user local scale
+the scan is fast enough.
+
+**Alternatives:** Adopt `sqlite-vec` now; a pure-Rust in-process HNSW (`instant-distance`/`hnsw_rs`)
+to avoid C deps but add index build/persistence complexity.
+
+**Consequences:** No new heavy/platform-specific dependency; retrieval stays simple and exact. Revisit
+when OQ-2 is answered or a bucket grows large — the B-014 eval harness makes any swap measurable, and
+`user_version` (D-13) gives a migration path for a persisted index.
+
+## D-13: Schema versioning via `PRAGMA user_version`
+
+**Context (2026-07-14):** The `chunks_fts` backfill (B-001) needs a one-shot "has this DB been
+migrated?" signal, and `COUNT(*)` on an external-content FTS5 table reads through to the base table so
+it can't distinguish an empty index from a full one. The DB otherwise had no schema-version concept
+(only `CREATE TABLE IF NOT EXISTS`).
+
+**Decision:** Use SQLite's `PRAGMA user_version` as a lightweight schema-version marker. Version 1 =
+`chunks_fts` present and backfilled. `ChunkStore::init_fts` rebuilds the index and bumps the version
+when it finds version < 1.
+
+**Alternatives:** A dedicated `schema_meta` table; probing FTS shadow tables; always rebuilding.
+
+**Consequences:** Minimal, idempotent migration gate and the seed for real migrations (E5/B-021). A
+single global integer is coarse; formalize an ordered-migration runner if migrations multiply.

@@ -633,3 +633,170 @@ impl Provider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // ---- pure logic (no I/O) --------------------------------------------
+
+    #[test]
+    fn provider_kind_parses_and_rejects() {
+        assert_eq!("groq".parse::<ProviderKind>().unwrap(), ProviderKind::Groq);
+        assert_eq!(
+            " OpenAI ".parse::<ProviderKind>().unwrap(),
+            ProviderKind::OpenAi
+        );
+        assert!("gemini".parse::<ProviderKind>().is_err());
+    }
+
+    #[test]
+    fn default_and_ctx_lookups() {
+        assert_eq!(default_model(ProviderKind::Groq), "openai/gpt-oss-120b");
+        assert_eq!(default_model(ProviderKind::Anthropic), "claude-sonnet-5");
+        // Known model → registry window; unknown → per-provider fallback.
+        assert_eq!(ctx_for(ProviderKind::OpenAi, "gpt-4o"), 128000);
+        assert_eq!(ctx_for(ProviderKind::Groq, "some-custom-model"), 8192);
+    }
+
+    #[test]
+    fn anthropic_hoists_system_and_maps_roles() {
+        let msgs = vec![
+            Message {
+                role: "system".into(),
+                content: "sys-a".into(),
+            },
+            Message {
+                role: "system".into(),
+                content: "sys-b".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "hi".into(),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "hello".into(),
+            },
+        ];
+        let (system, turns) = AnthropicClient::split_messages(&msgs);
+        assert_eq!(system.as_deref(), Some("sys-a\n\nsys-b"));
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[0].role, "user");
+        assert_eq!(turns[1].role, "assistant");
+    }
+
+    // ---- mock-HTTP round trip (B-002) -----------------------------------
+
+    /// Serve one canned HTTP response per queued script entry, each on its own
+    /// `Connection: close` socket, and return the base URL to point a client at.
+    async fn spawn_mock(scripts: Vec<(u16, &'static str, String)>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            for (code, reason, body) in scripts {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                drain_request(&mut sock).await;
+                let resp = format!(
+                    "HTTP/1.1 {code} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
+    /// Read an HTTP request far enough to consume its body (so the client sees a
+    /// clean response rather than a connection reset).
+    async fn drain_request(sock: &mut tokio::net::TcpStream) {
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 1024];
+        loop {
+            let n = sock.read(&mut tmp).await.unwrap_or(0);
+            if n == 0 {
+                return;
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                let headers = String::from_utf8_lossy(&buf[..pos]).to_lowercase();
+                let content_len = headers
+                    .lines()
+                    .find_map(|l| l.strip_prefix("content-length:"))
+                    .and_then(|v| v.trim().parse::<usize>().ok())
+                    .unwrap_or(0);
+                if buf.len() - (pos + 4) >= content_len {
+                    return;
+                }
+            }
+        }
+    }
+
+    fn openai_provider(base_url: String) -> Provider {
+        Provider::OpenAiCompat(OpenAiCompatClient::new(
+            "Mock",
+            base_url,
+            Some("test-key".to_string()),
+            "mock-model",
+            8192,
+        ))
+    }
+
+    #[tokio::test]
+    async fn openai_compat_chat_parses_response() {
+        let body = r#"{"choices":[{"message":{"role":"assistant","content":"hello from mock"}}]}"#;
+        let url = spawn_mock(vec![(200, "OK", body.to_string())]).await;
+        let provider = openai_provider(url);
+
+        let out = provider
+            .chat(&[Message {
+                role: "user".into(),
+                content: "hi".into(),
+            }])
+            .await
+            .unwrap();
+        assert_eq!(out, "hello from mock");
+    }
+
+    #[tokio::test]
+    async fn openai_compat_retries_5xx_then_succeeds() {
+        let body = r#"{"choices":[{"message":{"role":"assistant","content":"recovered"}}]}"#;
+        // First attempt 500 (retryable), second attempt 200 (B-005 retry path).
+        let url = spawn_mock(vec![
+            (500, "Internal Server Error", "boom".to_string()),
+            (200, "OK", body.to_string()),
+        ])
+        .await;
+        let provider = openai_provider(url);
+
+        let out = provider
+            .chat(&[Message {
+                role: "user".into(),
+                content: "hi".into(),
+            }])
+            .await
+            .unwrap();
+        assert_eq!(out, "recovered");
+    }
+
+    #[tokio::test]
+    async fn openai_compat_surfaces_client_error() {
+        // 400 is non-retryable → error bubbles up with the status + body snippet.
+        let url = spawn_mock(vec![(400, "Bad Request", "bad model".to_string())]).await;
+        let provider = openai_provider(url);
+
+        let err = provider
+            .chat(&[Message {
+                role: "user".into(),
+                content: "hi".into(),
+            }])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("400"), "unexpected error: {err}");
+        assert!(err.contains("bad model"), "unexpected error: {err}");
+    }
+}

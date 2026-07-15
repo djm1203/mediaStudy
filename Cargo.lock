@@ -4276,6 +4276,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "tempfile",
  "termimad",
  "thiserror 2.0.18",
  "tokio",

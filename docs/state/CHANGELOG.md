@@ -12,6 +12,50 @@ author: Derek Martinez
 
 # Changelog
 
+## 2026-07-14 (E1 RAG quality + E6 tests/docs + E7 distribution, branch `v1-foundation`, uncommitted)
+
+All green at every step: build · clippy `--all-targets -D warnings` · fmt · **40 tests** (up from 15).
+
+- **E1 / B-001** — Promoted the chunk keyword arm from SQL `LIKE` to a real `chunks_fts` FTS5
+  external-content table with insert/update/delete sync triggers (mirrors `documents_fts`), plus a
+  ranked `ChunkStore::search_content_fts` (queries sanitized into a safe `MATCH` expr). Legacy DBs are
+  backfilled once via a `PRAGMA user_version` migration gate (`COUNT(*)` on an external-content FTS
+  table reads through to the base table, so it can't detect an empty index — the version gate can).
+- **E1 / B-012 + B-011** — New `src/retrieval.rs`: unified hybrid search that fuses the semantic
+  (cosine) and keyword (FTS5) arms with **Reciprocal Rank Fusion**, replacing the old
+  keyword-then-semantic concatenation, and returns `RetrievedChunk`s carrying `document_id` +
+  `chunk_index` + `filename`. Answers now get **verifiable structured citations**: the context block
+  numbers each source `[Source N: file (chunk X)]`, the system prompt instructs numeric `[Source N]`
+  citations, and `Message::ChatDone` threads a `Vec<Citation>` into a **"Sources" view** in the TUI
+  chat pane. `commands/chat::build_semantic_context` → `build_grounded_context`.
+- **E1 / B-014** — Retrieval **eval harness** (`src/eval.rs`): `EvalCase`/`EvalReport` scoring
+  hit-rate@k, recall@k, and MRR over the retriever, with a hermetic keyword-only fixture that gates
+  quality in CI (no embedding-model download).
+- **E1 / B-013** — **Structure-aware chunking**: `chunk_text` now segments on Markdown headings and
+  blank-line paragraphs, packs blocks up to the size target (so chunks land on semantic boundaries),
+  carries a word-boundary overlap tail between chunks, and hard-splits oversized blocks.
+- **E1 / B-007** — Evaluated an ANN/vector index and **deferred** it (see DECISIONS D-12): keep the
+  brute-force cosine scan pending the owner's target-scale answer (OQ-2); avoids adding sqlite-vec's
+  C/build-toolchain friction prematurely. The B-014 harness now makes any future swap measurable.
+- **E6 / B-002** — Expanded tests from 15 → 40. Added `tempfile` dev-dep and hermetic on-disk-SQLite
+  tests: chunks FTS ranking + trigger sync + legacy backfill + hybrid citation metadata; documents
+  CRUD + FTS delete-sync + list ordering; retrieval context numbering/budget; eval metrics; the
+  structure-aware chunker; and **provider adapters via a real tokio mock-HTTP server** (happy path,
+  5xx-retry recovery, non-retryable 4xx error) plus pure logic (`ProviderKind` parse, `default_model`/
+  `ctx_for`, Anthropic system-hoisting).
+- **E6 / B-009** — Fixed README/`--help` drift: default model `openai/gpt-oss-120b` (not
+  `llama-3.3-70b-versatile`), documented the ratatui TUI (replacing the old inquire-menu copy) and the
+  pluggable providers, corrected the app dir to `librarian`, updated Models/How-It-Works/Project-
+  Structure/Acknowledgments, and removed the non-existent `generate homework` command.
+- **E7 / B-006** — Build metadata: `build.rs` embeds git short SHA + commit date into `--version`
+  (`librarian 0.1.0 (<sha> <date>)`). Added a one-line `install.sh` (detects OS/arch, pulls the latest
+  release binary to `~/.local/bin`). Cross-platform release binaries already attach via B-003.
+- **E7 / B-023** — crates.io metadata (`repository`/`homepage`/`readme`/`keywords`/`categories`/
+  `exclude`); `cargo package` validated. Added a **`librarian update`** self-update *check* (queries the
+  latest GitHub release, compares versions, prints if newer — no binary replacement). Added a manual
+  (`workflow_dispatch`-only) `publish.yml` so a release can't auto-publish.
+- Seeded schema versioning via `PRAGMA user_version` (DECISIONS D-13) — groundwork for E5/B-021.
+
 ## 2026-07-13 (E2 — pluggable providers, branch `v1-foundation`) — E2 COMPLETE
 
 - **E2-core (committed):** enum-dispatched `Provider` abstraction (`src/llm/provider.rs`) — one

@@ -32,9 +32,10 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::task;
 
 use crate::bucket::{self, Bucket};
-use crate::commands::chat::{build_fts_context, build_semantic_context};
+use crate::commands::chat::{build_fts_context, build_grounded_context};
 use crate::config::Config;
 use crate::llm::Message as LlmMessage;
+use crate::retrieval::Citation;
 use crate::storage::{ChunkStore, ConversationStore, Database, DocumentStore};
 
 use super::action::{ConversationMeta, Message};
@@ -54,7 +55,10 @@ RESPONSE STYLE:
 - Do not assume the student wants code, LaTeX, or any specific output format unless they explicitly ask for it
 - Use plain text with clear formatting. Only use code blocks if the question involves actual code
 
-Format citations like: [Source: filename]"#;
+CITATIONS:
+- The context is split into numbered sources, each headed by a marker like [Source 2: notes.pdf (chunk 5)]
+- When a statement draws on a source, cite it inline with just its number in brackets, e.g. [Source 2]
+- Cite only source numbers that actually appear in the provided context; never invent one"#;
 
 const NO_DOCS_SYSTEM_PROMPT: &str = r#"You are The Librarian, a knowledgeable study assistant. The user has no documents loaded in their current library.
 
@@ -149,7 +153,7 @@ pub async fn run_chat(
 
     // 1. Build retrieval context on a blocking thread (opens its own DB).
     let q_for_ctx = question.clone();
-    let context = task::spawn_blocking(move || build_context(&q_for_ctx)).await??;
+    let (context, citations) = task::spawn_blocking(move || build_context(&q_for_ctx)).await??;
 
     // 2. Assemble the API message list; inject context into the final user turn.
     let mut api_messages = history;
@@ -185,13 +189,15 @@ pub async fn run_chat(
     let _ = msg_tx.send(Message::ChatDone {
         conversation_id: conv_id,
         response,
+        citations,
     });
     Ok(())
 }
 
-/// Build hybrid RAG context for a question from the current bucket. Runs on a
-/// blocking thread; opens its own [`Database`].
-fn build_context(question: &str) -> Result<String> {
+/// Build hybrid RAG context for a question from the current bucket, plus the
+/// structured citations grounding it (B-011). Runs on a blocking thread; opens
+/// its own [`Database`].
+fn build_context(question: &str) -> Result<(String, Vec<Citation>)> {
     let db = Database::open()?;
     let doc_store = DocumentStore::new(&db);
     let chunk_store = ChunkStore::new(&db);
@@ -199,7 +205,7 @@ fn build_context(question: &str) -> Result<String> {
 
     let doc_count = doc_store.count().unwrap_or(0);
     if doc_count == 0 {
-        return Ok(String::new());
+        return Ok((String::new(), Vec::new()));
     }
     let chunk_count = chunk_store.count().unwrap_or(0);
 
@@ -208,12 +214,12 @@ fn build_context(question: &str) -> Result<String> {
     let max_context = 8000usize;
     let enhanced = crate::search::enhance_query(question);
 
-    let context = if chunk_count > 0 {
-        build_semantic_context(&chunk_store, &doc_store, &enhanced, max_context)?
+    if chunk_count > 0 {
+        build_grounded_context(&chunk_store, &doc_store, &enhanced, max_context)
     } else {
-        build_fts_context(&doc_store, question, max_context)?
-    };
-    Ok(context)
+        let context = build_fts_context(&doc_store, question, max_context)?;
+        Ok((context, Vec::new()))
+    }
 }
 
 /// Persist a completed turn: create the conversation if needed, set its title on

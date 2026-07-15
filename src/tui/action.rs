@@ -12,6 +12,7 @@
 //! (hence the enum-level `#[allow(dead_code)]`).
 
 use crate::llm::groq::Message as LlmMessage;
+use crate::retrieval::Citation;
 
 // ---------------------------------------------------------------------------
 // Shared result payloads (owned; safe to send across tasks).
@@ -258,9 +259,14 @@ pub enum Message {
     /// One streamed chat token (a `delta.content` fragment).
     ChatToken(String),
     /// A chat turn finished streaming and was persisted.
+    ///
+    /// `citations` carries the structured sources retrieval grounded the answer
+    /// in (empty when no chunk context was used); the Chat pane renders them as
+    /// a browsable sources view (B-011).
     ChatDone {
         conversation_id: i64,
         response: String,
+        citations: Vec<Citation>,
     },
     /// A chat turn failed.
     ChatError(String),

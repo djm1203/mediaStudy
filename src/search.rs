@@ -165,22 +165,6 @@ pub fn chunks_overlap(a: &str, b: &str, threshold: f64) -> bool {
     (intersection as f64 / union as f64) >= threshold
 }
 
-/// Remove chunks with >80% word overlap, keeping the first occurrence
-pub fn deduplicate_chunks(chunks: Vec<(i64, String)>) -> Vec<(i64, String)> {
-    let mut result: Vec<(i64, String)> = Vec::new();
-
-    for (id, content) in chunks {
-        let is_dup = result
-            .iter()
-            .any(|(_, existing)| chunks_overlap(existing, &content, 0.8));
-        if !is_dup {
-            result.push((id, content));
-        }
-    }
-
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,27 +219,5 @@ mod tests {
         let a = "the quick brown fox";
         let b = "completely different text here";
         assert!(!chunks_overlap(a, b, 0.5));
-    }
-
-    #[test]
-    fn test_deduplicate_chunks() {
-        let chunks = vec![
-            (
-                1,
-                "the quick brown fox jumps over the lazy dog near the river".to_string(),
-            ),
-            (
-                2,
-                "the quick brown fox jumps over the lazy dog near the lake".to_string(),
-            ), // >80% overlap
-            (
-                3,
-                "completely different content about biology and chemistry".to_string(),
-            ),
-        ];
-        let deduped = deduplicate_chunks(chunks);
-        assert_eq!(deduped.len(), 2);
-        assert_eq!(deduped[0].0, 1);
-        assert_eq!(deduped[1].0, 3);
     }
 }

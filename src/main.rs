@@ -7,14 +7,27 @@ mod bucket;
 mod commands;
 mod config;
 mod embeddings;
+mod eval;
 mod ingest;
 mod llm;
 mod render;
+mod retrieval;
 mod search;
 mod storage;
 mod tui;
 
 use tui::Screen;
+
+/// Full version string: crate version plus the embedded git SHA + build date
+/// (see `build.rs`), e.g. `0.1.0 (a1b2c3d 2026-07-15)`.
+const VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("LIBRARIAN_GIT_SHA"),
+    " ",
+    env!("LIBRARIAN_BUILD_DATE"),
+    ")"
+);
 
 #[derive(Parser)]
 #[command(name = "librarian")]
@@ -22,9 +35,10 @@ use tui::Screen;
 #[command(
     long_about = "The Librarian helps you study smarter by ingesting your course materials \
 (PDFs, videos, audio, notes) and letting you chat with them, generate study guides, \
-flashcards, quizzes, and more. Powered by Groq LLM and local embeddings."
+flashcards, quizzes, and more. Powered by pluggable LLM providers \
+(Groq/OpenAI/Anthropic/Ollama) and local embeddings."
 )]
-#[command(version)]
+#[command(version = VERSION)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -76,6 +90,8 @@ enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+    /// Check whether a newer release of The Librarian is available
+    Update,
 }
 
 #[derive(Subcommand)]
@@ -199,6 +215,7 @@ async fn main() -> Result<()> {
             let name = cmd.get_name().to_string();
             generate(shell, &mut cmd, name, &mut io::stdout());
         }
+        Some(Commands::Update) => commands::update::check().await?,
         // No subcommand - launch the full-screen TUI on Home.
         None => tui::run().await?,
     }

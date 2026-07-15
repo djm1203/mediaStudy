@@ -17,6 +17,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::llm::groq::Message as LlmMessage;
+use crate::retrieval::Citation;
 
 use super::action::{Action, ConversationMeta, Message, ToastLevel};
 use super::service;
@@ -96,6 +97,9 @@ pub struct ChatState {
     pub input: String,
     /// Transcript scroll-back in wrapped lines from the bottom (0 = follow tail).
     pub scroll: u16,
+    /// Structured sources grounding the most recent assistant turn (B-011);
+    /// rendered as a "Sources" view beneath the transcript.
+    pub last_citations: Vec<Citation>,
 }
 
 /// Outcome of testing a key against the global keymap.
@@ -463,6 +467,7 @@ impl App {
 
         self.chat.input.clear();
         self.chat.stream_buf.clear();
+        self.chat.last_citations.clear();
         self.chat.streaming = true;
         self.chat.scroll = 0;
 
@@ -517,12 +522,14 @@ impl App {
             Message::ChatDone {
                 conversation_id,
                 response,
+                citations,
             } => {
                 self.chat.conversation_id = Some(conversation_id);
                 self.chat.history.push(LlmMessage {
                     role: "assistant".to_string(),
                     content: response,
                 });
+                self.chat.last_citations = citations;
                 self.chat.stream_buf.clear();
                 self.chat.streaming = false;
                 self.chat.scroll = 0;

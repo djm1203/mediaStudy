@@ -4,3 +4,4 @@ pub mod chat;
 pub mod docs;
 pub mod generate;
 pub mod quiz;
+pub mod update;

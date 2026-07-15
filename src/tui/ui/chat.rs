@@ -69,6 +69,8 @@ fn render_transcript(frame: &mut Frame, app: &App, area: Rect) {
                 width,
                 app,
             );
+        } else {
+            push_sources(&mut lines, app, width);
         }
     }
 
@@ -105,6 +107,25 @@ fn empty_state(app: &App, lines: &mut Vec<Line>) {
             )));
         }
     }
+}
+
+/// Render the "Sources" view for the most recent grounded answer (B-011): each
+/// numbered citation maps back to a concrete document + chunk.
+fn push_sources(lines: &mut Vec<Line<'static>>, app: &App, width: usize) {
+    if app.chat.last_citations.is_empty() {
+        return;
+    }
+    lines.push(Line::from(Span::styled(
+        "Sources".to_string(),
+        app.theme.title(),
+    )));
+    for c in &app.chat.last_citations {
+        let entry = format!("  [{}] {} · chunk {}", c.marker, c.filename, c.chunk_index);
+        for wrapped in wrap(&entry, width) {
+            lines.push(Line::from(Span::styled(wrapped, app.theme.dim())));
+        }
+    }
+    lines.push(Line::from(""));
 }
 
 fn push_message(

@@ -1,0 +1,40 @@
+name: Publish to crates.io
+
+# Manual only — never fires on push/tag, so a release can't accidentally publish.
+# Run from the Actions tab after a release is tagged and verified.
+# Requires a CARGO_REGISTRY_TOKEN repository secret (crates.io API token).
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (validate without publishing)"
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: cargo publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Publish (dry run)
+        if: ${{ inputs.dry_run }}
+        run: cargo publish --dry-run
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        run: cargo publish --token "${CARGO_REGISTRY_TOKEN}"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

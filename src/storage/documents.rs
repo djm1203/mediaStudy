@@ -151,3 +151,88 @@ impl<'a> DocumentStore<'a> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DocumentStore;
+    use crate::storage::Database;
+
+    fn temp_db() -> (tempfile::TempDir, Database) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open_at_path(dir.path().join("docs.db")).unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn document_crud_roundtrip() {
+        let (_dir, db) = temp_db();
+        let store = DocumentStore::new(&db);
+
+        let id = store
+            .insert("/path/a.md", "a.md", "text", "alpha content", Some("t1"))
+            .unwrap();
+        assert_eq!(store.count().unwrap(), 1);
+        assert!(store.exists_by_path("/path/a.md").unwrap());
+        assert!(!store.exists_by_path("/path/missing.md").unwrap());
+
+        let got = store.get(id).unwrap().unwrap();
+        assert_eq!(got.filename, "a.md");
+        assert_eq!(got.content, "alpha content");
+        assert_eq!(got.tags.as_deref(), Some("t1"));
+
+        assert!(store.delete(id).unwrap());
+        assert_eq!(store.count().unwrap(), 0);
+        assert!(store.get(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn fts_search_matches_content_and_syncs_on_delete() {
+        let (_dir, db) = temp_db();
+        let store = DocumentStore::new(&db);
+        let bio = store
+            .insert(
+                "/p/bio.md",
+                "bio.md",
+                "text",
+                "mitochondria and enzymes",
+                None,
+            )
+            .unwrap();
+        store
+            .insert(
+                "/p/geo.md",
+                "geo.md",
+                "text",
+                "tectonic plates and faults",
+                None,
+            )
+            .unwrap();
+
+        let hits = store.search("enzymes").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].filename, "bio.md");
+
+        // The FTS delete trigger must keep the index consistent.
+        store.delete(bio).unwrap();
+        assert!(store.search("enzymes").unwrap().is_empty());
+    }
+
+    #[test]
+    fn list_orders_newest_first() {
+        let (_dir, db) = temp_db();
+        let store = DocumentStore::new(&db);
+        store
+            .insert("/p/1.md", "1.md", "text", "one", None)
+            .unwrap();
+        // Guarantee a distinct created_at so the DESC ordering is unambiguous
+        // regardless of the platform clock's resolution.
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        store
+            .insert("/p/2.md", "2.md", "text", "two", None)
+            .unwrap();
+        let list = store.list().unwrap();
+        assert_eq!(list.len(), 2);
+        // created_at DESC — most recently inserted first.
+        assert_eq!(list[0].filename, "2.md");
+    }
+}
