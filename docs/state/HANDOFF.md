@@ -14,23 +14,26 @@ author: Derek Martinez
 
 ## Where We Stopped
 
-All work is on branch **`v1-foundation`**. The prior sessions committed E9/E7-B003/E6-B004/E3/E2 (11
-commits, pushed). **This session added E1 + E6 + E7 and left them UNCOMMITTED** (per R-10.5, awaiting
-the owner's go-ahead) — all green: build · clippy `--all-targets -D warnings` · fmt · **40 tests**.
+All work is on branch **`v1-foundation`**, now **4 commits ahead of origin (committed, not pushed)** on
+top of the prior 11. All green: build · clippy `--all-targets -D warnings` · fmt · **45 tests**. Tree clean.
 
-**Delivered this session (uncommitted):**
-- **E1 — RAG quality (complete):** `chunks_fts` FTS5 keyword arm (B-001), RRF hybrid fusion (B-012),
-  structured verifiable citations + TUI "Sources" view (B-011), structure-aware chunking (B-013),
-  retrieval eval harness (B-014). ANN index (B-007) evaluated & deferred (D-12).
-- **E6:** tests 15 → 40 (B-002); README/`--help` drift fixed (B-009).
-- **E7:** `build.rs` version metadata + `install.sh` (B-006); crates.io metadata + `publish.yml` +
-  `librarian update` check (B-023).
+**This session's commits:**
+- `6760871` — **E1** RAG quality (complete) + **E6** tests/docs + **E7** distribution.
+- `a85b7b3` — **E4/B-019** content-hash dedup + resilient batch import (core).
+- `4669cf3` — **E5/B-020+B-021** stats/export/import/compact/reembed + `meta` table + Windows
+  bucket-delete fix.
+- `09845b5` — **E8/B-022** `librarian doctor` health check.
 
 **New landmarks:** `src/retrieval.rs` (hybrid search + `Citation`), `src/eval.rs` (metrics),
-`build.rs` (version), `src/commands/update.rs`. `Message::ChatDone` now carries `Vec<Citation>`.
-Product direction unchanged (D-7/D-8/D-9). Roadmap + statuses in `docs/planning/BACKLOG.md`.
+`src/storage/maintenance.rs` (stats/vacuum/export), `build.rs` (version), `src/commands/{update,data,
+doctor}.rs`. `Message::ChatDone` carries `Vec<Citation>`. `documents.content_hash` + a `meta` k/v table
+(schema_version + embedding-model identity). Product direction unchanged (D-7/D-8/D-9).
 
-**First thing next session:** decide whether to commit the E1/E6/E7 changeset (then push).
+**Verified end-to-end via the real CLI:** `stats`, `export`→`import`→`bucket delete` round-trip, `doctor`,
+`--version`. Retrieval/FTS/eval/chunker/providers covered by the 45 tests.
+
+**First thing next session:** consider `git push` (4 commits ahead). Everything left needs the owner's
+environment/hands (see What's Next) — the headlessly-verifiable backlog is done.
 
 ### Architecture landmarks (read before touching these)
 - **TUI** (`src/tui/`): async loop in `mod.rs` (two mpsc channels: `Action` in, `Message` out);
@@ -55,26 +58,26 @@ Product direction unchanged (D-7/D-8/D-9). Roadmap + statuses in `docs/planning/
 
 ## What's Next (resume order)
 
-0. **Commit the uncommitted E1/E6/E7 changeset** (awaiting owner go-ahead per R-10.5), then push.
-   The whole v1.0 remainder (E1, E6, E7) is done and green — see "Where We Stopped".
-1. **v1.1 — E4 (ingestion robustness):** **B-019** content-hash dedup (skip re-ingest/re-embed of
-   identical files), resumable/batch imports, per-file error surfacing, chunked audio for long files;
-   **B-008** PDF/OCR robustness for complex/scanned PDFs.
-2. **v1.1 — E5 (data safety):** **B-020** bucket export/import + backup/restore + `librarian stats`;
-   **B-021** schema migrations + safe re-embed flow (**groundwork done** — `PRAGMA user_version` is now
-   the schema-version marker, currently v1; add an ordered migration runner).
-3. **v1.1 — E8 (first-run UX):** **B-022** first-run wizard + `librarian doctor` + OS-keychain option;
-   **B-010** Homebrew/Scoop/AUR packaging.
-4. **B-018** — TUI theme/input polish (configurable accent, mouse, smoother redraws). Needs a visual
-   `cargo run` pass (D-11), so pair it with an interactive session.
-- **Loose ends:** **B-025** `reqwest 0.13` (deferred: swaps TLS to rustls+aws-lc → cmake/nasm build
-  deps); **per-bucket provider override** (provider is global today); a human visual TUI pass + one live
-  request per provider before tagging v1.0; Linux arm64 isn't in the release matrix yet.
+Everything below needs the owner's environment/hands or a decision — the headlessly-verifiable backlog
+is complete.
+
+0. **`git push`** the 4 commits (optional; branch is ahead of origin).
+1. **Needs real media / external tools (can't verify headlessly):** **B-008** PDF/OCR robustness for
+   complex/scanned PDFs; **B-019 remainder** chunked audio + media size/time guards for long recordings.
+2. **Needs interactive/visual work:** **B-022 remainder** first-run wizard (TUI onboarding), OS-keychain
+   key storage, Windows file-perm hardening; **B-018** TUI theme/input polish (accent, mouse, redraws) —
+   verify with `cargo run` (D-11).
+3. **Release-artifact-dependent:** **B-010** Homebrew/Scoop/AUR manifests (need real release tarballs +
+   checksums); add Linux arm64 to the release matrix.
+4. **Owner decisions / deferred:** **B-021** ordered multi-step migration runner (only if migrations
+   multiply — `meta.schema_version` + `user_version` groundwork is in); **B-007** ANN index (deferred,
+   D-12, pending OQ-2 scale); **B-025** `reqwest 0.13` (deferred — TLS/build-dep change); **per-bucket
+   provider override** (global today).
+5. **Pre-v1.0 gate:** a human visual TUI pass + one live request per provider (D-11 / R-8).
 
 How to work: autonomous, parallel agents where independent, with a serial contract/refactor step first
-when agents would touch shared files. **E1's retrieval items shared `src/retrieval.rs` + the chat path,
-so they were done serially by one worker — the right call.** Green gate at every milestone; commit only
-on the owner's explicit say-so (R-10.5).
+when agents touch shared files. Green gate at every milestone; **commit only on the owner's explicit
+say-so (R-10.5) with no AI attribution.** This session's commits followed that.
 
 ## Quick Reference
 
