@@ -12,6 +12,14 @@ author: Derek Martinez
 
 # Changelog
 
+## 2026-07-14 (E8 — `librarian doctor`, branch `v1-foundation`)
+
+- **E8 / B-022 (partial)** — `librarian doctor`: a read-only environment health check reporting, with
+  actionable hints, the configured provider + credential, transcription availability, a writable data
+  directory, the embedding model, and the optional FFmpeg/Tesseract tools; exits with a warn/fail tally.
+  Verified end-to-end against the real binary. README command list updated. *Remaining for B-022:* the
+  interactive first-run wizard, an OS-keychain key option, and Windows file-permission hardening.
+
 ## 2026-07-14 (E5 data safety — B-020 + B-021 core, branch `v1-foundation`)
 
 All green: build · clippy `--all-targets -D warnings` · fmt · **45 tests**. New CLI commands verified

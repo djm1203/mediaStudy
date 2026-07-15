@@ -110,6 +110,8 @@ enum Commands {
     Compact,
     /// Rebuild all chunk embeddings with the current model
     Reembed,
+    /// Check your environment (provider, keys, tools, data dir)
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -241,6 +243,7 @@ async fn main() -> Result<()> {
         Some(Commands::Export { dest }) => commands::data::export(dest)?,
         Some(Commands::Import { name, src }) => commands::data::import(name, src)?,
         Some(Commands::Compact) => commands::data::compact()?,
+        Some(Commands::Doctor) => commands::doctor::run()?,
         Some(Commands::Reembed) => {
             commands::bucket::print_bucket_context();
             commands::data::reembed()?;

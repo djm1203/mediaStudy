@@ -28,6 +28,7 @@ author: Derek Martinez
 - **Tests:** 45 (all green), incl. hermetic on-disk-SQLite + tokio mock-HTTP provider tests.
 - **Ingestion:** content-hash (SHA-256) dedup skips byte-identical re-adds; batch import is per-file resilient.
 - **Data mgmt:** `librarian {stats,export,import,compact,reembed}`; `meta` table (schema_version + embedding-model identity).
+- **Health:** `librarian doctor` checks provider/keys/tools/data-dir/model with actionable hints.
 
 ## Done
 

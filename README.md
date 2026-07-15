@@ -158,6 +158,14 @@ librarian library                  # Alias for bucket management
 librarian config                   # Configure provider, API key, and model (TUI)
 librarian completions <shell>      # Generate shell completions
 librarian update                   # Check for a newer release
+librarian doctor                   # Check your environment (provider, keys, tools, data dir)
+
+# Data & maintenance
+librarian stats                    # Document/chunk/study counts + database size
+librarian export <dest.db>         # Export the current bucket to a portable .db
+librarian import <name> <src.db>   # Import an exported .db as a new bucket
+librarian compact                  # Compact (VACUUM) the current bucket
+librarian reembed                  # Rebuild all chunk embeddings with the current model
 ```
 
 ### Adding Content
