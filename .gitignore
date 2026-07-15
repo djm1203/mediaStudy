@@ -31,3 +31,11 @@ config.toml
 .beacon-session.json
 .claude/settings.local.json
 # <<< BEACON Framework <<<
+
+# BEACON framework + internal governance/planning docs — kept local, not published.
+# (README.md and LICENSE remain public.)
+/.beacon/
+/.beacon-framework.toml
+/CLAUDE.md
+/AGENTS.md
+/docs/

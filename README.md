@@ -7,7 +7,7 @@
 ║    █  █▀█ ██▄   █▄▄ █ █▄█ █▀▄ █▀█ █▀▄ █ █▀█ █ ▀█     ║
 ║                                                        ║
 ║            ┌─────────────────────────────┐             ║
-║            │  📚 Your Study Companion 📚  │             ║
+║            │     Your Study Companion     │             ║
 ║            └─────────────────────────────┘             ║
 ╚════════════════════════════════════════════════════════╝
 ```
@@ -430,4 +430,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-Made with 📚 for students, by students.
+Made for students, by students.
