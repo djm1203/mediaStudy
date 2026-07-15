@@ -110,6 +110,17 @@ async fn ingest_file(path: &Path, msg_tx: &UnboundedSender<Message>) -> (usize, 
         }
     };
 
+    // Content-based dedup (B-019): identical content under any path is skipped.
+    if let Ok(true) = exists_by_content(content.text.clone()).await {
+        log_line(msg_tx, format!("⊘ {filename} · duplicate content"));
+        let _ = msg_tx.send(Message::IngestProgress {
+            done: 1,
+            total: 1,
+            current: String::new(),
+        });
+        return (0, 1);
+    }
+
     let content_type = content_type_str(&content.content_type).to_string();
     match embed_and_store(
         source_path,
@@ -191,6 +202,13 @@ async fn ingest_directory(dir: &Path, msg_tx: &UnboundedSender<Message>) -> (usi
             }
         };
 
+        // Content-based dedup (B-019): identical content under any path.
+        if let Ok(true) = exists_by_content(content.text.clone()).await {
+            log_line(msg_tx, format!("⊘ {filename} · duplicate content"));
+            skipped += 1;
+            continue;
+        }
+
         let content_type = content_type_str(&content.content_type).to_string();
         // Per-file: no chunk-level progress so the gauge stays file-granular.
         match embed_and_store(
@@ -256,6 +274,17 @@ async fn ingest_url(url: &str, msg_tx: &UnboundedSender<Message>) -> (usize, usi
             return (0, 0);
         }
     };
+
+    // Content-based dedup (B-019): skip if identical content is already stored.
+    if let Ok(true) = exists_by_content(content.text.clone()).await {
+        log_line(msg_tx, format!("⊘ {url} · duplicate content"));
+        let _ = msg_tx.send(Message::IngestProgress {
+            done: 1,
+            total: 1,
+            current: String::new(),
+        });
+        return (0, 1);
+    }
 
     let is_youtube = url.contains("youtube.com") || url.contains("youtu.be");
     let content_type = if is_youtube { "youtube" } else { "url" }.to_string();
@@ -342,6 +371,16 @@ async fn exists_by_path(source_path: String) -> Result<bool> {
     .await?
 }
 
+/// Check whether byte-identical content already exists (B-019), on a blocking
+/// thread that owns its own [`Database`].
+async fn exists_by_content(text: String) -> Result<bool> {
+    task::spawn_blocking(move || {
+        let db = Database::open()?;
+        DocumentStore::new(&db).exists_by_content(&text)
+    })
+    .await?
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -353,7 +392,10 @@ async fn collect_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut entries = tokio::fs::read_dir(dir).await?;
     while let Some(entry) = entries.next_entry().await? {
         let file_path = entry.path();
-        if tokio::fs::metadata(&file_path).await?.is_file() {
+        // Skip entries we can't stat rather than aborting the whole batch.
+        if let Ok(metadata) = tokio::fs::metadata(&file_path).await
+            && metadata.is_file()
+        {
             files.push(file_path);
         }
     }

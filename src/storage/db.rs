@@ -124,6 +124,18 @@ impl Database {
             [],
         )?;
 
+        // Additive migration: content_hash on documents for content-based dedup
+        // (B-019). Older databases predate the column, so add it if missing.
+        let has_content_hash: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('documents') WHERE name = 'content_hash'",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_content_hash == 0 {
+            self.conn
+                .execute("ALTER TABLE documents ADD COLUMN content_hash TEXT", [])?;
+        }
+
         // Study items table (spaced repetition)
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS study_items (

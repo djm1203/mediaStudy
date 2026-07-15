@@ -12,6 +12,19 @@ author: Derek Martinez
 
 # Changelog
 
+## 2026-07-14 (E4 ingestion robustness — B-019 core, branch `v1-foundation`, uncommitted)
+
+All green: build · clippy `--all-targets -D warnings` · fmt · **41 tests**.
+
+- **E4 / B-019 (core)** — **Content-hash dedup**: added a SHA-256 `content_hash` column to `documents`
+  (additive `ALTER TABLE` migration guarded by `pragma_table_info`), computed/stored on every insert,
+  with `DocumentStore::exists_by_content`. Both ingest paths (headless `commands/add.rs` and the TUI
+  `tui/service/add.rs`) now skip byte-identical content re-added under a different path/URL — not just
+  same-path duplicates — avoiding wasteful re-embedding. **Batch import hardened**: a single file that
+  can't be stat'd/canonicalized is now reported per-file and skipped instead of aborting the whole run.
+  New `sha2` dependency + a dedup unit test. *Remaining for B-019:* chunked audio for long recordings
+  and media size/time guards (deferred — need real-media verification in an interactive session).
+
 ## 2026-07-14 (E1 RAG quality + E6 tests/docs + E7 distribution, branch `v1-foundation`, uncommitted)
 
 All green at every step: build · clippy `--all-targets -D warnings` · fmt · **40 tests** (up from 15).

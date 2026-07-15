@@ -1,8 +1,16 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::params;
+use sha2::{Digest, Sha256};
 
 use super::Database;
+
+/// SHA-256 hex digest of a document's text, used for content-based dedup (B-019).
+pub fn hash_content(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
 
 #[derive(Debug, Clone)]
 pub struct Document {
@@ -27,7 +35,8 @@ impl<'a> DocumentStore<'a> {
         Self { db }
     }
 
-    /// Insert a new document
+    /// Insert a new document. The content hash is computed and stored so
+    /// identical content can be de-duplicated later (B-019).
     pub fn insert(
         &self,
         source_path: &str,
@@ -37,11 +46,12 @@ impl<'a> DocumentStore<'a> {
         tags: Option<&str>,
     ) -> Result<i64> {
         let now = Utc::now().to_rfc3339();
+        let hash = hash_content(content);
 
         self.db.conn.execute(
-            "INSERT INTO documents (source_path, filename, content_type, content, tags, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![source_path, filename, content_type, content, tags, now, now],
+            "INSERT INTO documents (source_path, filename, content_type, content, tags, created_at, updated_at, content_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![source_path, filename, content_type, content, tags, now, now, hash],
         ).context("Failed to insert document")?;
 
         Ok(self.db.conn.last_insert_rowid())
@@ -125,6 +135,20 @@ impl<'a> DocumentStore<'a> {
         let count: i64 = self.db.conn.query_row(
             "SELECT COUNT(*) FROM documents WHERE source_path = ?1",
             params![source_path],
+            |row| row.get(0),
+        )?;
+
+        Ok(count > 0)
+    }
+
+    /// Whether a document with byte-identical content already exists (B-019),
+    /// regardless of its source path — so the same file re-added under a new
+    /// name/location, or an identical copy, is not re-ingested/re-embedded.
+    pub fn exists_by_content(&self, content: &str) -> Result<bool> {
+        let hash = hash_content(content);
+        let count: i64 = self.db.conn.query_row(
+            "SELECT COUNT(*) FROM documents WHERE content_hash = ?1",
+            params![hash],
             |row| row.get(0),
         )?;
 
@@ -215,6 +239,28 @@ mod tests {
         // The FTS delete trigger must keep the index consistent.
         store.delete(bio).unwrap();
         assert!(store.search("enzymes").unwrap().is_empty());
+    }
+
+    #[test]
+    fn dedup_by_content_hash_ignores_path() {
+        let (_dir, db) = temp_db();
+        let store = DocumentStore::new(&db);
+        store
+            .insert(
+                "/p/original.md",
+                "original.md",
+                "text",
+                "identical body",
+                None,
+            )
+            .unwrap();
+
+        // Same content, different path → detected as a content duplicate…
+        assert!(store.exists_by_content("identical body").unwrap());
+        // …but the path-based check does not see the new path.
+        assert!(!store.exists_by_path("/p/copy.md").unwrap());
+        // Different content is not a duplicate.
+        assert!(!store.exists_by_content("something else").unwrap());
     }
 
     #[test]

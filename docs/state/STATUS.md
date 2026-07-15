@@ -25,7 +25,8 @@ author: Derek Martinez
 - **Retrieval:** hybrid — semantic cosine + `chunks_fts` FTS5 keyword, fused with Reciprocal Rank Fusion; structured citations.
 - **LLM:** pluggable provider (Groq default: `openai/gpt-oss-120b`; OpenAI/Anthropic/Ollama also supported), `whisper-large-v3-turbo` (default) for transcription.
 - **Optional external tools:** FFmpeg (audio/video), Tesseract (OCR).
-- **Tests:** 40 (all green), incl. hermetic on-disk-SQLite + tokio mock-HTTP provider tests.
+- **Tests:** 41 (all green), incl. hermetic on-disk-SQLite + tokio mock-HTTP provider tests.
+- **Ingestion:** content-hash (SHA-256) dedup skips byte-identical re-adds; batch import is per-file resilient.
 
 ## Done
 

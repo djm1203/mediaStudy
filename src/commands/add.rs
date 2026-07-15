@@ -123,6 +123,16 @@ async fn process_file(
     let content = ingest::extract_from_file_async(path).await?;
     spinner.finish_and_clear();
 
+    // Content-based dedup (B-019): identical content already ingested under any
+    // path is skipped, avoiding a wasteful re-embed.
+    if doc_store.exists_by_content(&content.text)? {
+        println!(
+            "{} Identical content is already in your library — skipping.",
+            "⚠".yellow()
+        );
+        return Ok(());
+    }
+
     let filename = path
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
@@ -194,13 +204,15 @@ async fn process_directory(
     doc_store: &DocumentStore<'_>,
     chunk_store: &ChunkStore<'_>,
 ) -> Result<()> {
-    // First, collect all files to get total count
+    // First, collect all files to get total count. A single unreadable entry
+    // must not abort the whole batch (B-019 — resilient batch import).
     let mut files = Vec::new();
     let mut entries = tokio::fs::read_dir(path).await?;
     while let Some(entry) = entries.next_entry().await? {
         let file_path = entry.path();
-        let metadata = tokio::fs::metadata(&file_path).await?;
-        if metadata.is_file() {
+        if let Ok(metadata) = tokio::fs::metadata(&file_path).await
+            && metadata.is_file()
+        {
             files.push(file_path);
         }
     }
@@ -223,9 +235,6 @@ async fn process_directory(
     let mut results: Vec<(String, Result<(usize, usize), String>)> = Vec::new();
 
     for file_path in files {
-        let abs_path = tokio::fs::canonicalize(&file_path).await?;
-        let source_path = abs_path.to_string_lossy().to_string();
-
         let filename_display = file_path
             .file_name()
             .map(|f| f.to_string_lossy().to_string())
@@ -233,7 +242,18 @@ async fn process_directory(
 
         pb.set_message(format!("Processing: {}", filename_display));
 
-        // Check if already exists
+        // A file that can't be resolved is reported and skipped, not fatal.
+        let source_path = match tokio::fs::canonicalize(&file_path).await {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                results.push((filename_display, Err(format!("cannot access: {}", e))));
+                errors += 1;
+                pb.inc(1);
+                continue;
+            }
+        };
+
+        // Check if already exists (by path)
         if doc_store.exists_by_path(&source_path)? {
             results.push((filename_display, Err("already exists".to_string())));
             skipped += 1;
@@ -243,6 +263,14 @@ async fn process_directory(
 
         match ingest::extract_from_file_async(&file_path).await {
             Ok(content) => {
+                // Content-based dedup (B-019): identical content under any path.
+                if doc_store.exists_by_content(&content.text).unwrap_or(false) {
+                    results.push((filename_display, Err("duplicate content".to_string())));
+                    skipped += 1;
+                    pb.inc(1);
+                    continue;
+                }
+
                 let filename = file_path
                     .file_name()
                     .map(|f| f.to_string_lossy().to_string())
@@ -307,7 +335,7 @@ async fn process_directory(
                     chunks
                 );
             }
-            Err(ref e) if e == "already exists" => {
+            Err(ref e) if e == "already exists" || e == "duplicate content" => {
                 println!("  {} {} ({})", "⊘".yellow(), filename, e);
             }
             Err(e) => {
@@ -356,6 +384,15 @@ async fn process_url(url: &str) -> Result<()> {
     // Fetch and extract content
     let content = ingest::fetch_url(url).await?;
     spinner.finish_and_clear();
+
+    // Content-based dedup (B-019): skip if identical content is already stored.
+    if doc_store.exists_by_content(&content.text)? {
+        println!(
+            "{} Identical content is already in your library — skipping.",
+            "⚠".yellow()
+        );
+        return Ok(());
+    }
 
     // Insert document
     let content_type = if is_youtube { "youtube" } else { "url" };

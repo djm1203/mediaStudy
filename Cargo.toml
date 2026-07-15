@@ -51,6 +51,9 @@ termimad = "0.35"
 # Database
 rusqlite = { version = "0.40", features = ["bundled", "modern_sqlite"] }
 
+# Content-hash dedup for ingestion (B-019)
+sha2 = "0.10"
+
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
