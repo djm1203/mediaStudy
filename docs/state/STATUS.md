@@ -25,8 +25,9 @@ author: Derek Martinez
 - **Retrieval:** hybrid — semantic cosine + `chunks_fts` FTS5 keyword, fused with Reciprocal Rank Fusion; structured citations.
 - **LLM:** pluggable provider (Groq default: `openai/gpt-oss-120b`; OpenAI/Anthropic/Ollama also supported), `whisper-large-v3-turbo` (default) for transcription.
 - **Optional external tools:** FFmpeg (audio/video), Tesseract (OCR).
-- **Tests:** 41 (all green), incl. hermetic on-disk-SQLite + tokio mock-HTTP provider tests.
+- **Tests:** 45 (all green), incl. hermetic on-disk-SQLite + tokio mock-HTTP provider tests.
 - **Ingestion:** content-hash (SHA-256) dedup skips byte-identical re-adds; batch import is per-file resilient.
+- **Data mgmt:** `librarian {stats,export,import,compact,reembed}`; `meta` table (schema_version + embedding-model identity).
 
 ## Done
 
@@ -48,28 +49,32 @@ author: Derek Martinez
 - **E3 — full ratatui TUI (DONE):** `src/tui/` with an async event/render loop, `Action`/`Message` plumbing, `Pane` trait + per-screen modules, service/worker layers (all DB/embedding in `spawn_blocking`), and all 9 screens (Home, Chat, Search, Docs, Add/ingest, Study, Quiz, Review, Config). `inquire` and the legacy line-based menu removed; arg-less subcommands open the TUI, arg-provided paths stay headless.
 - **E2 — pluggable providers (DONE):** enum-dispatched `Provider` (OpenAI-compat covers Groq/OpenAI/Ollama + Anthropic), retry/backoff, `Config` provider selection + TUI Config-pane selector, generalized `Transcriber` (Groq/OpenAI Whisper). Groq stays default; backward compatible.
 
-## Done this session (branch `v1-foundation`, uncommitted — all green: build · clippy `--all-targets -D warnings` · fmt · 40 tests)
+## Done this session (branch `v1-foundation`, all green: build · clippy `--all-targets -D warnings` · fmt · 45 tests)
 
-- **E1 — RAG quality (COMPLETE):** B-001 `chunks_fts` FTS5 keyword arm (+ backfill), B-012 RRF fusion,
-  B-011 structured verifiable citations + a TUI "Sources" view, B-013 structure-aware chunking, B-014
-  retrieval eval harness. B-007 (ANN index) **evaluated & deferred** (D-12, pending OQ-2).
-- **E6 (COMPLETE for v1.0):** B-002 tests 15 → 40 (storage CRUD/FTS, hybrid retrieval + citations,
-  eval, chunker, provider adapters via tokio mock HTTP); B-009 README/`--help` drift fixed.
-- **E7 (COMPLETE for v1.0):** B-006 `build.rs` version metadata + `install.sh`; B-023 crates.io metadata
-  + manual `publish.yml` + `librarian update` self-update check.
+- **E1 — RAG quality (COMPLETE, committed 6760871):** B-001 `chunks_fts` FTS5 keyword arm (+ backfill),
+  B-012 RRF fusion, B-011 structured verifiable citations + a TUI "Sources" view, B-013 structure-aware
+  chunking, B-014 retrieval eval harness. B-007 (ANN index) **evaluated & deferred** (D-12, pending OQ-2).
+- **E6 (COMPLETE for v1.0, committed 6760871):** B-002 tests 15 → 40; B-009 README/`--help` drift fixed.
+- **E7 (COMPLETE for v1.0, committed 6760871):** B-006 `build.rs` version metadata + `install.sh`;
+  B-023 crates.io metadata + manual `publish.yml` + `librarian update` self-update check.
+- **E4 — ingestion robustness (core, committed a85b7b3):** B-019 content-hash (SHA-256) dedup + resilient
+  batch import. Remaining B-019/B-008 (chunked audio, PDF/OCR robustness) need real-media verification.
+- **E5 — data safety (core, uncommitted):** B-020 `stats`/`export`/`import`/`compact` + `maintenance.rs`;
+  B-021 `meta` table (schema_version + embedding-model identity) + `reembed`. Verified end-to-end via the
+  real CLI. Also fixed a Windows `bucket delete` file-lock bug.
 
 ## In Flight
 
-- None — stopped at a clean (uncommitted) checkpoint, all green. **Not yet committed** (per R-10.5,
-  awaiting explicit go-ahead). The pending changeset covers E1 + E6 + E7 above.
+- **E5 changeset is uncommitted** (all green). Everything before it (E1/E6/E7 = 6760871, E4 = a85b7b3)
+  is committed on `v1-foundation`. Nothing pushed yet.
 
 ## Next (resume here)
 
-1. **Commit** the E1/E6/E7 changeset (awaiting the owner's word), then push.
-2. **v1.1 epics:** E4 (B-019 content-hash dedup + resumable/batch imports; B-008 PDF/OCR robustness),
-   E5 (B-020 export/import + `stats`; B-021 schema migrations — `user_version` groundwork is in), E8
-   (B-022 first-run wizard + `doctor`; B-010 Homebrew/Scoop/AUR).
-3. **B-018** — TUI theme/input polish (configurable accent, mouse). MEDIUM; needs a visual `cargo run`
-   pass, so left for an interactive session (D-11).
-- **Loose ends:** B-025 `reqwest 0.13` (deferred — TLS/build-dep change); per-bucket provider override;
-  a human visual pass of the TUI + a live request per provider is still advisable before tagging v1.0.
+1. **Commit E5** and consider pushing `v1-foundation` (3–4 commits ahead of origin now).
+2. **E8 (first-run UX):** B-022 first-run wizard + `librarian doctor` (doctor is testable); B-010
+   Homebrew/Scoop/AUR packaging.
+3. **E4/E5 remainders:** chunked audio + PDF/OCR robustness (B-019/B-008 — need real media); an ordered
+   migration runner for B-021 if migrations multiply.
+4. **B-018** — TUI theme/input polish. Needs a visual `cargo run` pass (D-11).
+- **Loose ends:** B-025 `reqwest 0.13` (deferred); per-bucket provider override; a human visual TUI pass
+  + a live request per provider before tagging v1.0.

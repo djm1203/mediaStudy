@@ -2,6 +2,13 @@ use anyhow::{Context, Result};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use std::sync::{Mutex, OnceLock};
 
+/// Identity of the active embedding model, recorded per bucket so a model change
+/// can trigger a safe re-embed (B-021). Bump `MODEL_ID`/`DIM` together with the
+/// `EmbeddingModel` below if the model ever changes.
+pub const MODEL_ID: &str = "all-MiniLM-L6-v2";
+/// Embedding dimensionality of [`MODEL_ID`].
+pub const DIM: usize = 384;
+
 /// Global embedding model instance (loaded once)
 static EMBEDDING_MODEL: OnceLock<Mutex<TextEmbedding>> = OnceLock::new();
 

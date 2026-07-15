@@ -2,6 +2,7 @@ pub mod chunks;
 pub mod conversations;
 pub mod db;
 pub mod documents;
+pub mod maintenance;
 pub mod study;
 
 pub use chunks::ChunkStore;

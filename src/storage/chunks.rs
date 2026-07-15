@@ -331,8 +331,21 @@ impl<'a> ChunkStore<'a> {
         Ok(chunks)
     }
 
+    /// Get `(id, content)` for every chunk, for a full re-embed (B-021).
+    pub fn get_all_for_reembed(&self) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self
+            .db
+            .conn
+            .prepare("SELECT id, content FROM chunks ORDER BY id")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     /// Update chunk embedding
-    #[allow(dead_code)]
     pub fn update_embedding(&self, chunk_id: i64, embedding: &[f32]) -> Result<()> {
         let embedding_bytes = embeddings::embedding_to_bytes(embedding);
 

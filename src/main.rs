@@ -92,6 +92,24 @@ enum Commands {
     },
     /// Check whether a newer release of The Librarian is available
     Update,
+    /// Show document/chunk/study counts and database size for the current bucket
+    Stats,
+    /// Export the current bucket to a compacted, portable .db file
+    Export {
+        /// Destination path (e.g. ./my-class.db)
+        dest: String,
+    },
+    /// Import an exported .db file as a new bucket
+    Import {
+        /// Name for the new bucket
+        name: String,
+        /// Path to the exported .db file
+        src: String,
+    },
+    /// Compact (VACUUM) the current bucket's database in place
+    Compact,
+    /// Rebuild all chunk embeddings with the current model
+    Reembed,
 }
 
 #[derive(Subcommand)]
@@ -216,6 +234,17 @@ async fn main() -> Result<()> {
             generate(shell, &mut cmd, name, &mut io::stdout());
         }
         Some(Commands::Update) => commands::update::check().await?,
+        Some(Commands::Stats) => {
+            commands::bucket::print_bucket_context();
+            commands::data::stats()?;
+        }
+        Some(Commands::Export { dest }) => commands::data::export(dest)?,
+        Some(Commands::Import { name, src }) => commands::data::import(name, src)?,
+        Some(Commands::Compact) => commands::data::compact()?,
+        Some(Commands::Reembed) => {
+            commands::bucket::print_bucket_context();
+            commands::data::reembed()?;
+        }
         // No subcommand - launch the full-screen TUI on Home.
         None => tui::run().await?,
     }

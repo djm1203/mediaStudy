@@ -5,6 +5,10 @@ use std::path::PathBuf;
 use crate::bucket::{self, Bucket};
 use crate::config::Config;
 
+/// App-level logical schema version, stored in `meta.schema_version` (B-021).
+/// Bump when a change needs a data migration; add the migration step alongside.
+pub const SCHEMA_VERSION: i64 = 1;
+
 pub struct Database {
     pub conn: Connection,
     #[allow(dead_code)]
@@ -155,6 +159,51 @@ impl Database {
             [],
         )?;
 
+        // Key/value metadata (B-021): app-level schema version, the embedding
+        // model identity used to build the vectors, etc. This is the extensible
+        // home for schema/migration state. (Note: the `chunks_fts` backfill uses
+        // `PRAGMA user_version` as its own internal one-shot gate — see
+        // `ChunkStore::init_fts` — kept separate so a bump here can never skip
+        // that backfill on a legacy database.)
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )",
+            [],
+        )?;
+        self.meta_set_if_absent("schema_version", &SCHEMA_VERSION.to_string())?;
+
+        Ok(())
+    }
+
+    /// Read a value from the `meta` key/value table.
+    pub fn meta_get(&self, key: &str) -> Result<Option<String>> {
+        let value = self
+            .conn
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| {
+                row.get::<_, String>(0)
+            })
+            .ok();
+        Ok(value)
+    }
+
+    /// Upsert a value into the `meta` key/value table.
+    pub fn meta_set(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO meta(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Set a meta value only if the key is not already present.
+    fn meta_set_if_absent(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES(?1, ?2)",
+            [key, value],
+        )?;
         Ok(())
     }
 }

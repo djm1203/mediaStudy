@@ -12,6 +12,26 @@ author: Derek Martinez
 
 # Changelog
 
+## 2026-07-14 (E5 data safety — B-020 + B-021 core, branch `v1-foundation`)
+
+All green: build · clippy `--all-targets -D warnings` · fmt · **45 tests**. New CLI commands verified
+end-to-end against the real binary (stats read-only; export→import→delete round-trip).
+
+- **E5 / B-020** — Data management: `src/storage/maintenance.rs` (`gather_stats`, `vacuum`,
+  `vacuum_into`) and four headless commands — `librarian stats` (documents/chunks/embedded/study/
+  conversations + DB size, warns on an embedding-model mismatch), `librarian export <dest>` (compacted
+  portable copy via `VACUUM INTO`), `librarian import <name> <src>` (read-only validates the source is a
+  Librarian DB, then copies it into a new bucket), and `librarian compact` (in-place `VACUUM`). Export
+  is refused if the destination exists; a `.db` is self-contained so no archive format/dep is needed.
+- **E5 / B-021** — Schema/versioning groundwork: a `meta` key/value table seeded with `schema_version`
+  (`db::SCHEMA_VERSION`) and the embedding-model identity (`embeddings::{MODEL_ID,DIM}`), kept separate
+  from the `chunks_fts` `PRAGMA user_version` gate so a bump can never skip a legacy FTS backfill. New
+  `librarian reembed` rebuilds every chunk vector with the current model and stamps the model into
+  `meta`; `stats` flags a model mismatch and points at it.
+- **Bug fix (Windows)** — `librarian bucket delete` failed with "file in use" (os error 32) because the
+  DB connection was still open when `remove_dir_all` ran; the count query is now scoped so the
+  connection drops first. Found via the E5 round-trip verification.
+
 ## 2026-07-14 (E4 ingestion robustness — B-019 core, branch `v1-foundation`, uncommitted)
 
 All green: build · clippy `--all-targets -D warnings` · fmt · **41 tests**.

@@ -132,11 +132,14 @@ pub async fn delete(name: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    // Document count (for the confirmation message).
-    let bucket = Bucket::open(&name)?;
-    let db = Database::open_for_bucket(&bucket)?;
-    let store = DocumentStore::new(&db);
-    let count = store.count()?;
+    // Document count (for the confirmation message). Scoped so the database
+    // connection is dropped before we remove the directory — otherwise Windows
+    // refuses to delete the still-open `documents.db` (os error 32).
+    let count = {
+        let bucket = Bucket::open(&name)?;
+        let db = Database::open_for_bucket(&bucket)?;
+        DocumentStore::new(&db).count()?
+    };
 
     // Clear current bucket if this was it.
     let current = bucket::get_current_bucket()?;
